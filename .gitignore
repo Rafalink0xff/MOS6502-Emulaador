@@ -1,0 +1,15 @@
+# Ignorar pastas de compilação do Visual Studio
+.vs/
+Debug/
+Release/
+x64/
+*.user
+
+# Ignorar o executável e arquivos de objeto
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+# Ignorar a ROM do jogo (Direitos Autorais)
+*.nes
