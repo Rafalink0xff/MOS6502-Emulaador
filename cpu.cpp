@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <cstdlib> // Necessário para o exit(1)
 
 CPU::CPU() {
     for (int i = 0; i < 65536; i++) {
@@ -22,89 +23,74 @@ void CPU::Reset() {
 }
 
 void CPU::ExecutarCiclo() {
-    uint8_t opcode = LerMemoria(PC); // A CPU lê o comando passando pelo pedágio!
+    uint8_t opcode = LerMemoria(PC);
     PC++;
 
     switch (opcode) {
 
-        // --- INSTRUÇÕES DE CARREGAMENTO (LDA) ---
-    case 0xA9: // LDA Modo Imediato
-        Instrucao_LDA(ModoImediato());
-        break;
+        // ==========================================
+        // 1. INSTRUÇÕES DE MEMÓRIA (LOAD/STORE)
+        // ==========================================
+        case 0xA9: Instrucao_LDA(ModoImediato());  break; // LDA Imediato
+        case 0xAD: Instrucao_LDA(ModoAbsoluto());  break; // LDA Absoluto
+        case 0xBD: Instrucao_LDA(ModoAbsolutoX()); break; // LDA Absoluto,X
+        case 0xA0: Instrucao_LDY(ModoImediato());  break; // LDY Imediato
+        case 0x8D: Instrucao_STA(ModoAbsoluto());  break; // STA Absoluto
 
-    case 0xA0: // LDY Imediato
-        Instrucao_LDY(ModoImediato());
-        break;
+        // ==========================================
+        // 2. INSTRUÇÕES DE REGISTRADORES E MATEMÁTICA
+        // ==========================================
+        case 0xA2: // LDX Imediato
+            X = LerMemoria(PC);
+            PC++;
+            AtualizarFlagsZeroENegativo(X);
+            break;
+        case 0xAA: // TAX
+            X = A;
+            AtualizarFlagsZeroENegativo(X);
+            break;
+        case 0xE8: // INX
+            X = X + 1;
+            AtualizarFlagsZeroENegativo(X);
+            break;
+        case 0xCA: // DEX
+            Instrucao_DEX();
+            break;
+        case 0xC9: // CMP Imediato
+            Instrucao_CMP(ModoImediato());
+            break;
 
-    case 0xBD: // LDA Modo Absoluto,X
-        Instrucao_LDA(ModoAbsolutoX());
-        break;
+        // ==========================================
+        // 3. DESVIOS CONDICIONAIS (BRANCHES)
+        // ==========================================
+        case 0x10: Instrucao_BPL(ModoRelativo()); break;
+        case 0xB0: Instrucao_BCS(ModoRelativo()); break;
+        case 0xD0: Instrucao_BNE(ModoRelativo()); break;
 
-    case 0xAD: // LDA Modo Absoluto
-        Instrucao_LDA(ModoAbsoluto());
-        break;
+        // ==========================================
+        // 4. PILHA E STATUS (FLAGS)
+        // ==========================================
+        case 0x9A: // TXS
+            SP = X;
+            break;
+        case 0x78: // SEI
+            Status |= 0x04;
+            break;
+        case 0xD8: // CLD
+            Status &= ~0x08;
+            break;
 
-        // --- INSTRUÇÕES DE GRAVAÇÃO (STA) ---
-    case 0x8D: // STA Modo Absoluto
-        Instrucao_STA(ModoAbsoluto());
-        break;
+        // ==========================================
+        // 5. SISTEMA
+        // ==========================================
+        case 0x00: // BRK
+            std::cout << "Interrupcao forcada.\n";
+            exit(0);
 
-        // --- INSTRUÇÕES COM REGISTRADOR X ---
-    case 0xA2: // LDX Imediato
-    {
-        uint8_t valor = LerMemoria(PC);
-        X = valor;
-        PC++;
-        AtualizarFlagsZeroENegativo(X);
-        break;
-    }
-    case 0xAA: // TAX (Transfer A to X)
-    {
-        X = A;
-        AtualizarFlagsZeroENegativo(X);
-        break;
-    }
-    case 0xE8: // INX (Increment X)
-    {
-        X = X + 1;
-        AtualizarFlagsZeroENegativo(X);
-        break;
-    }
-
-    // --- INSTRUÇÕES DE DESVIO (BRANCHES) ---
-    case 0x10: // BPL Modo Relativo
-        Instrucao_BPL(ModoRelativo());
-        break;
-
-        // --- INSTRUÇÕES DE PILHA (STACK) ---
-    case 0x9A: // TXS (Transfer X to Stack Pointer)
-    {
-        SP = X;
-        break;
-    }
-
-    // --- INSTRUÇÕES DE STATUS (FLAGS) ---
-    case 0x78: // SEI (Set Interrupt Disable)
-    {
-        Status |= 0x04;
-        break;
-    }
-    case 0xD8: // CLD (Clear Decimal Mode)
-    {
-        Status &= ~0x08;
-        break;
-    }
-
-    // --- CONTROLE DE FLUXO ---
-    case 0x00: // BRK (Force Interrupt / Fim)
-    {
-        std::cout << "Interrupcao forcada.\n";
-        break;
-    }
-
-    default:
-        std::cout << "ERRO FATAL: Instrucao desconhecida lida pela CPU!\n";
-        break;
+        default:
+            std::cout << "ERRO FATAL: Instrucao desconhecida lida pela CPU! Opcode: 0x"
+                      << std::uppercase << std::hex << (int)opcode << "\n";
+            exit(1);
     }
 }
 
@@ -114,7 +100,7 @@ void CPU::ExecutarCiclo() {
 
 uint8_t CPU::LerMemoria(uint16_t endereco) {
     if (endereco == 0x2002) {
-        return 0x80; // HACK DO VBLANK: Mente para o Mario dizendo que a tela já está pronta
+        return 0x80; // HACK DO VBLANK
     }
     return memoria[endereco];
 }
@@ -124,7 +110,7 @@ void CPU::EscreverMemoria(uint16_t endereco, uint8_t valor) {
 }
 
 // ==========================================
-// MODOS DE ENDEREÇAMENTO E INSTRUÇÕES
+// MODOS DE ENDEREÇAMENTO
 // ==========================================
 
 uint16_t CPU::ModoImediato() {
@@ -144,10 +130,7 @@ uint16_t CPU::ModoAbsolutoX() {
     uint8_t byte_baixo = LerMemoria(PC);
     uint8_t byte_alto = LerMemoria(PC + 1);
     PC += 2;
-
     uint16_t endereco_base = (byte_alto << 8) | byte_baixo;
-
-    // O grande truque: O endereço real é o endereço base somado ao valor de X!
     return endereco_base + X;
 }
 
@@ -155,6 +138,18 @@ uint16_t CPU::ModoRelativo() {
     int8_t deslocamento = (int8_t)LerMemoria(PC);
     PC++;
     return PC + deslocamento;
+}
+
+// ==========================================
+// LÓGICA DAS INSTRUÇÕES
+// ==========================================
+
+void CPU::AtualizarFlagsZeroENegativo(uint8_t registrador) {
+    if (registrador == 0x00) { Status |= 0x02;  }
+    else                     { Status &= ~0x02; }
+
+    if (registrador & 0x80)  { Status |= 0x80;  }
+    else                     { Status &= ~0x80; }
 }
 
 void CPU::Instrucao_LDA(uint16_t endereco) {
@@ -172,25 +167,32 @@ void CPU::Instrucao_STA(uint16_t endereco) {
 }
 
 void CPU::Instrucao_BPL(uint16_t endereco) {
-    // Se a Flag Negativa (bit 7) estiver 0, o salto acontece!
-    if ((Status & 0x80) == 0) {
-        PC = endereco;
-    }
+    if ((Status & 0x80) == 0) { PC = endereco; }
 }
 
-void CPU::AtualizarFlagsZeroENegativo(uint8_t registrador) {
-    if (registrador == 0x00) {
-        Status |= 0x02;
-    }
-    else {
-        Status &= ~0x02;
-    }
+void CPU::Instrucao_BCS(uint16_t endereco) {
+    if ((Status & 0x01) == 1) { PC = endereco; }
+}
 
-    if (registrador & 0x80) {
-        Status |= 0x80;
-    }
-    else {
-        Status &= ~0x80;
+void CPU::Instrucao_CMP(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    uint8_t resultado = A - valor;
+
+    if (A >= valor) { Status |= 0x01;  }
+    else            { Status &= ~0x01; }
+
+    AtualizarFlagsZeroENegativo(resultado);
+}
+
+void CPU::Instrucao_DEX() {
+    X = X - 1;
+    AtualizarFlagsZeroENegativo(X);
+}
+
+void CPU::Instrucao_BNE(uint16_t endereco) {
+    // BNE desvia se a luz Zero (Bit 1) estiver APAGADA (igual a 0)
+    if ((Status & 0x02) == 0) {
+        PC = endereco;
     }
 }
 
@@ -205,72 +207,90 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
     ss << "[" << std::setfill('0') << std::setw(4) << std::hex << std::uppercase << endereco << "] ";
 
     switch (opcode) {
-    case 0xA9: // LDA Immediate
-    {
-        uint8_t valor = memoria[endereco + 1];
-        ss << "A9 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDA #$" << (int)valor;
-        endereco += 2;
-        break;
-    }
-    case 0xA0: // LDY Immediate
-    {
-        uint8_t valor = memoria[endereco + 1];
-        ss << "A0 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDY #$" << (int)valor;
-        endereco += 2; // Aqui nós dizemos ao leitor para pular 2 bytes, evitando o desalinhamento!
-        break;
-    }
-    case 0xAD: // LDA Absoluto
-    {
-        uint8_t byte_baixo = memoria[endereco + 1];
-        uint8_t byte_alto = memoria[endereco + 2];
-        ss << "AD " << std::setfill('0') << std::setw(2) << (int)byte_baixo << " " << std::setfill('0') << std::setw(2) << (int)byte_alto
-            << "    LDA $" << std::setfill('0') << std::setw(2) << (int)byte_alto << std::setfill('0') << std::setw(2) << (int)byte_baixo;
-        endereco += 3;
-        break;
-    }
-    case 0xBD: // LDA Absoluto,X
-    {
-        uint8_t byte_baixo = memoria[endereco + 1];
-        uint8_t byte_alto = memoria[endereco + 2];
-        ss << "BD " << std::setfill('0') << std::setw(2) << (int)byte_baixo << " " << std::setfill('0') << std::setw(2) << (int)byte_alto
-            << "    LDA $" << std::setfill('0') << std::setw(2) << (int)byte_alto << std::setfill('0') << std::setw(2) << (int)byte_baixo << ",X";
-        endereco += 3;
-        break;
-    }
-    case 0x8D: // STA Absoluto
-    {
-        uint8_t byte_baixo = memoria[endereco + 1];
-        uint8_t byte_alto = memoria[endereco + 2];
-        ss << "8D " << std::setfill('0') << std::setw(2) << (int)byte_baixo << " " << std::setfill('0') << std::setw(2) << (int)byte_alto
-            << "    STA $" << std::setfill('0') << std::setw(2) << (int)byte_alto << std::setfill('0') << std::setw(2) << (int)byte_baixo;
-        endereco += 3;
-        break;
-    }
-    case 0xA2: // LDX Immediate
-    {
-        uint8_t valor = memoria[endereco + 1];
-        ss << "A2 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDX #$" << (int)valor;
-        endereco += 2;
-        break;
-    }
-    case 0x10: // BPL Relativo
-    {
-        int8_t deslocamento = (int8_t)memoria[endereco + 1];
-        uint16_t destino = endereco + 2 + deslocamento;
-        ss << "10 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
-            << "    BPL $" << std::setfill('0') << std::setw(4) << destino;
-        endereco += 2;
-        break;
-    }
-    case 0xAA: ss << "AA       TAX"; endereco += 1; break;
-    case 0x9A: ss << "9A       TXS"; endereco += 1; break;
-    case 0xE8: ss << "E8       INX"; endereco += 1; break;
-    case 0x78: ss << "78       SEI"; endereco += 1; break;
-    case 0xD8: ss << "D8       CLD"; endereco += 1; break;
-    default:
-        ss << std::setfill('0') << std::setw(2) << std::hex << (int)opcode << "       ??? (Nao Implementado)";
-        endereco += 1;
-        break;
+        // --- 1 Byte ---
+        case 0xAA: ss << "AA       TAX"; endereco += 1; break;
+        case 0x9A: ss << "9A       TXS"; endereco += 1; break;
+        case 0xE8: ss << "E8       INX"; endereco += 1; break;
+        case 0xCA: ss << "CA       DEX"; endereco += 1; break;
+        case 0x78: ss << "78       SEI"; endereco += 1; break;
+        case 0xD8: ss << "D8       CLD"; endereco += 1; break;
+
+        // --- 2 Bytes ---
+        case 0xA9:
+        {
+            uint8_t valor = memoria[endereco + 1];
+            ss << "A9 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDA #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xA0:
+        {
+            uint8_t valor = memoria[endereco + 1];
+            ss << "A0 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDY #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xA2:
+        {
+            uint8_t valor = memoria[endereco + 1];
+            ss << "A2 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDX #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xC9:
+        {
+            uint8_t valor = memoria[endereco + 1];
+            ss << "C9 " << std::setfill('0') << std::setw(2) << (int)valor << "    CMP #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0x10:
+        {
+            int8_t deslocamento = (int8_t)memoria[endereco + 1];
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "10 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BPL $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        case 0xB0:
+        {
+            int8_t deslocamento = (int8_t)memoria[endereco + 1];
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "B0 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BCS $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+
+        // --- 3 Bytes ---
+        case 0xAD:
+        {
+            uint8_t l = memoria[endereco + 1]; uint8_t h = memoria[endereco + 2];
+            ss << "AD " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDA $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xBD:
+        {
+            uint8_t l = memoria[endereco + 1]; uint8_t h = memoria[endereco + 2];
+            ss << "BD " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0x8D:
+        {
+            uint8_t l = memoria[endereco + 1]; uint8_t h = memoria[endereco + 2];
+            ss << "8D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    STA $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xD0:
+        {
+            int8_t deslocamento = (int8_t)memoria[endereco + 1];
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "D0 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BNE $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        default:
+            ss << std::setfill('0') << std::setw(2) << std::hex << (int)opcode << "       ??? (Nao Implementado)";
+            endereco += 1;
+            break;
     }
     return ss.str();
 }

@@ -51,15 +51,10 @@ int main() {
 
     std::cout << "\n--- EXECUTANDO O JOGO REAL ---\n";
 
-    // Vamos executar os 15 primeiros ciclos reais do Super Mario!
-    for (int i = 0; i < 15; i++) {
-        // 1. Clonamos o PC atual só para o Raio-X poder ler a instrução sem estragar o PC real
+    // Vamos executar os 30 primeiros ciclos reais do Super Mario!
+    for (int i = 0; i < 60; i++) {
         uint16_t pc_para_leitura = nes_cpu.PC;
-
-        // 2. Imprimimos o que vai ser executado
         std::cout << nes_cpu.DisassembleInstrucao(pc_para_leitura) << "\n";
-
-        // 3. Deixamos a placa-mãe rodar a instrução!
         nes_cpu.ExecutarCiclo();
     }
 

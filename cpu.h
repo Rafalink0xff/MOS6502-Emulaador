@@ -25,19 +25,28 @@ private:
     // --- FUNÇÕES INTERNAS DE HARDWARE ---
     void AtualizarFlagsZeroENegativo(uint8_t registrador);
 
-    // Barramento de Memória (O Pedágio)
+    // --- BARRAMENTO DE MEMÓRIA (O Pedágio) ---
     uint8_t LerMemoria(uint16_t endereco);
     void EscreverMemoria(uint16_t endereco, uint8_t valor);
 
-    // Modos de Endereçamento
+    // --- MODOS DE ENDEREÇAMENTO ---
     uint16_t ModoImediato();
     uint16_t ModoAbsoluto();
-    uint16_t ModoRelativo();
     uint16_t ModoAbsolutoX();
+    uint16_t ModoRelativo();
 
-    // Instruções Isoladas
+    // --- INSTRUÇÕES DA CPU ---
+    // Load / Store (Memória)
     void Instrucao_LDA(uint16_t endereco);
     void Instrucao_LDY(uint16_t endereco);
     void Instrucao_STA(uint16_t endereco);
+
+    // Matemática e Registradores
+    void Instrucao_DEX(); // Corrigido: Sem endereço!
+    void Instrucao_CMP(uint16_t endereco);
+
+    // Desvios Condicionais (Branches)
     void Instrucao_BPL(uint16_t endereco);
+    void Instrucao_BCS(uint16_t endereco);
+    void Instrucao_BNE(uint16_t endereco);
 };
