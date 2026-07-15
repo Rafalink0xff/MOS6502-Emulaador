@@ -1,64 +1,51 @@
+#include "cpu.h"
 #include <iostream>
-#include <iomanip>
 #include <fstream>
-#include <vector>
-#include "cpu.h" 
-
-bool CarregarROM(CPU& nes_cpu, const std::string& caminhoArquivo) {
-    std::ifstream arquivo(caminhoArquivo, std::ios::binary);
-
-    if (!arquivo.is_open()) {
-        std::cout << "ERRO FATAL: Nao foi possivel abrir a ROM: " << caminhoArquivo << "\n";
-        return false;
-    }
-
-    std::vector<uint8_t> cabecalho(16);
-    arquivo.read(reinterpret_cast<char*>(cabecalho.data()), 16);
-
-    if (cabecalho[0] != 'N' || cabecalho[1] != 'E' || cabecalho[2] != 'S' || cabecalho[3] != 0x1A) {
-        std::cout << "ERRO FATAL: Arquivo corrompido ou formato invalido.\n";
-        return false;
-    }
-
-    std::cout << "[Cartucho] Assinatura NES detectada com sucesso!\n";
-
-    uint8_t prgRomBancos = cabecalho[4];
-    uint16_t tamanhoPRG = prgRomBancos * 16384;
-
-    std::cout << "[Cartucho] Tamanho do Codigo (PRG-ROM): " << (tamanhoPRG / 1024) << " KB\n";
-
-    if (cabecalho[6] & 0x04) {
-        arquivo.seekg(512, std::ios::cur);
-    }
-
-    arquivo.read(reinterpret_cast<char*>(&nes_cpu.memoria[0x8000]), tamanhoPRG);
-    arquivo.close();
-    return true;
-}
 
 int main() {
-    std::cout << "--- INICIANDO O EMULADOR NES ---\n";
+    CPU minhaCpu;
 
-    CPU nes_cpu;
-
-    if (!CarregarROM(nes_cpu, "mario.nes")) {
-        std::cin.get();
+    // ==============================================
+    // 1. INSERINDO O CARTUCHO (Carga da ROM)
+    // ==============================================
+    std::ifstream arquivo("mario.nes", std::ios::binary);
+    if (!arquivo) {
+        std::cout << "ERRO: Nao foi possivel abrir o arquivo mario.nes!\n";
         return 1;
     }
 
-    std::cout << "\nApertando o Reset do console...\n";
-    nes_cpu.Reset();
+    // Pula o cabeçalho iNES (16 bytes)
+    arquivo.seekg(16, std::ios::beg);
 
-    std::cout << "\n--- EXECUTANDO O JOGO REAL ---\n";
+    // Lê os 32KB do código do jogo e grava direto nos endereços 0x8000 a 0xFFFF
+    arquivo.read(reinterpret_cast<char*>(&minhaCpu.memoria[0x8000]), 32768);
 
-    // Vamos executar os 30 primeiros ciclos reais do Super Mario!
-    for (int i = 0; i < 60; i++) {
-        uint16_t pc_para_leitura = nes_cpu.PC;
-        std::cout << nes_cpu.DisassembleInstrucao(pc_para_leitura) << "\n";
-        nes_cpu.ExecutarCiclo();
+    std::cout << "[Cartucho] Jogo carregado na memoria com sucesso!\n";
+
+    // ==============================================
+    // 2. LIGANDO O CONSOLE
+    // ==============================================
+    minhaCpu.Reset();
+
+    int ciclos = 0;
+    std::cout << "--- INICIANDO O EMULADOR NES ---\n";
+    std::cout << "Aguardando o NMI arrancar o Mario do loop infinito...\n\n";
+
+    // Loop infinito do Console ligado!
+    while (true) {
+        // DIAGNÓSTICO: Descomente as duas linhas abaixo para ver o log voltar à vida!
+        uint16_t pc_atual = minhaCpu.PC;
+        std::cout << minhaCpu.DisassembleInstrucao(pc_atual) << "\n";
+
+        minhaCpu.ExecutarCiclo();
+        ciclos++;
+
+        // A cada 30.000 ciclos, a placa de vídeo avisa que a tela atualizou
+        if (ciclos >= 30000) {
+            minhaCpu.NMI();
+            ciclos = 0; // Reseta o reloginho
+        }
     }
 
-    std::cout << "\n--- CPU PAUSADA ---\n";
-    std::cin.get();
     return 0;
 }
