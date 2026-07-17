@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <deque>
 #include "bus.h"
 
 class CPU {
@@ -17,6 +18,12 @@ public:
     uint8_t  X;
     uint8_t  Y;
     uint8_t  Status;
+
+    // --- NOVO: CAIXA PRETA ---
+    // CORREÇÃO: Faltava o <std::string> aqui!
+    std::deque<std::string> historico_log;
+    void SalvarLogCircular();
+    void ImprimirHistoricoCrash();
 
     // --- FUNÇÕES PÚBLICAS ---
     void Reset();
@@ -44,6 +51,7 @@ private:
     uint16_t ModoRelativo();
     uint16_t ModoZeroPage();
     uint16_t ModoIndiretoY();
+    uint16_t ModoIndiretoX();
     uint16_t ModoIndireto();
     uint16_t ModoZeroPageX();
 

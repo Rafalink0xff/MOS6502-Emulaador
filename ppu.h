@@ -1,9 +1,14 @@
 #pragma once
 #include <cstdint>
 
+struct SDL_Renderer;
+
 class PPU {
 public:
     PPU();
+
+    bool Clock();
+    void Renderizar(SDL_Renderer* renderer) const;
 
     uint8_t ppu_scroll_x;
     uint8_t ppu_scroll_y;
@@ -22,4 +27,12 @@ public:
 
     uint16_t vram_addr; // O endereço de 16 bits que a CPU montar
     bool latch;         // 0 = Esperando byte Alto, 1 = Esperando byte Baixo
+
+    int scanline;
+    int ciclo;
+    bool sprite0_hit;
+
+private:
+    uint8_t CorBackgroundEmPixel(int pixel_x, int pixel_y) const;
+    uint8_t CorSprite0EmPixel(int pixel_x, int pixel_y) const;
 };

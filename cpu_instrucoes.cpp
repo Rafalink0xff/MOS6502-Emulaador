@@ -54,7 +54,7 @@ void CPU::Instrucao_BPL(uint16_t endereco) {
 }
 
 void CPU::Instrucao_BCS(uint16_t endereco) {
-    if ((Status & 0x01) == 1) { PC = endereco; }
+    if ((Status & 0x01)!= 0) { PC = endereco; }
 }
 
 void CPU::Instrucao_BNE(uint16_t endereco) {

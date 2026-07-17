@@ -42,6 +42,8 @@ int CPU::ExecutarCiclo() {
     // uint16_t pc_atual = PC;
     // std::cout << DisassembleInstrucao(pc_atual) << "\n";
 
+    SalvarLogCircular();
+
     uint8_t opcode = LerMemoria(PC);
     PC++;
 
@@ -88,15 +90,20 @@ int CPU::ExecutarCiclo() {
         case 0xCD: Instrucao_CMP(ModoAbsoluto()); break;
         case 0xD9: Instrucao_CMP(ModoAbsolutoY()); break;
         case 0xE0: Instrucao_CPX(ModoImediato()); break;
+        case 0xE4: Instrucao_CPX(ModoZeroPage()); break;
+        case 0xEC: Instrucao_CPX(ModoAbsoluto()); break;
         case 0xA8: Instrucao_TAY(); break;
         case 0x98: Instrucao_TYA(); break;
         case 0xC0: Instrucao_CPY(ModoImediato()); break;
+        case 0xC4: Instrucao_CPY(ModoZeroPage()); break;
+        case 0xCC: Instrucao_CPY(ModoAbsoluto()); break;
         case 0x2C: Instrucao_BIT(ModoAbsoluto()); break;
         case 0x24: Instrucao_BIT(ModoZeroPage()); break;
         case 0xEE: Instrucao_INC(ModoAbsoluto()); break;
         case 0xCE: Instrucao_DEC(ModoAbsoluto()); break;
         case 0xC6: Instrucao_DEC(ModoZeroPage()); break;
         case 0xDE: Instrucao_DEC(ModoAbsolutoX()); break;
+        case 0xD6: Instrucao_DEC(ModoZeroPageX()); break;
         case 0x4A: Instrucao_LSR_Acumulador();    break;
         case 0x46: Instrucao_LSR(ModoZeroPage()); break;
         case 0x4E: Instrucao_LSR(ModoAbsoluto()); break;
@@ -121,7 +128,8 @@ int CPU::ExecutarCiclo() {
         case 0x75: Instrucao_ADC(ModoZeroPageX()); break;
         case 0x69: Instrucao_ADC(ModoImediato());  break;
         case 0xE6: Instrucao_INC(ModoZeroPage()); break;
-
+        case 0xF6: Instrucao_INC(ModoZeroPageX()); break;
+        case 0xFE: Instrucao_INC(ModoAbsolutoX()); break;
         case 0x10: Instrucao_BPL(ModoRelativo()); break;
         case 0x30: Instrucao_BMI(ModoRelativo()); break;
         case 0xB0: Instrucao_BCS(ModoRelativo()); break;
@@ -131,14 +139,27 @@ int CPU::ExecutarCiclo() {
         case 0x09: Instrucao_ORA(ModoImediato()); break;
         case 0x0D: Instrucao_ORA(ModoAbsoluto()); break;
         case 0x05: Instrucao_ORA(ModoZeroPage()); break;
+        case 0x15: Instrucao_ORA(ModoZeroPageX()); break;
         case 0x1D: Instrucao_ORA(ModoAbsolutoX()); break;
+        case 0x19: Instrucao_ORA(ModoAbsolutoY()); break;
+        case 0x01: Instrucao_ORA(ModoIndiretoX()); break;
+        case 0x11: Instrucao_ORA(ModoIndiretoY()); break;
         case 0x29: Instrucao_AND(ModoImediato()); break;
         case 0x2D: Instrucao_AND(ModoAbsoluto()); break;
         case 0x3D: Instrucao_AND(ModoAbsolutoX()); break;
         case 0x39: Instrucao_AND(ModoAbsolutoY()); break;
+        case 0x21: Instrucao_AND(ModoIndiretoX()); break;
+        case 0x31: Instrucao_AND(ModoIndiretoY()); break;
         case 0x25: Instrucao_AND(ModoZeroPage()); break;
+        case 0x35: Instrucao_AND(ModoZeroPageX()); break;
         case 0x45: Instrucao_EOR(ModoZeroPage()); break;
         case 0x49: Instrucao_EOR(ModoImediato());  break;
+        case 0x55: Instrucao_EOR(ModoZeroPageX()); break;
+        case 0x4D: Instrucao_EOR(ModoAbsoluto()); break;  // <--- Faltava
+        case 0x5D: Instrucao_EOR(ModoAbsolutoX()); break; // <--- Faltava
+        case 0x59: Instrucao_EOR(ModoAbsolutoY()); break; // <--- Faltava
+        case 0x41: Instrucao_EOR(ModoIndiretoX()); break; // (Opcional, mas bom ter)
+        case 0x51: Instrucao_EOR(ModoIndiretoY()); break; // <--- Faltava
 
         case 0x9A: SP = X; break;
         case 0x78: Status |= 0x04; break;
@@ -156,12 +177,16 @@ int CPU::ExecutarCiclo() {
 
         case 0x00:
             std::cout << "Interrupcao forcada (BRK).\n";
+            ImprimirHistoricoCrash(); // <--- CHAMA A CAIXA PRETA AQUI
             exit(0);
 
         default:
             std::cout << "\nERRO FATAL: Instrucao desconhecida lida pela CPU! Opcode: 0x"
                       << std::uppercase << std::hex << (int)opcode
                       << " no PC: 0x" << PC-1 << "\n";
+
+            ImprimirHistoricoCrash(); // <--- CHAMA A CAIXA PRETA AQUI!
+
             std::cout << "Pressione ENTER para sair...\n";
             std::cin.get();
             exit(1);
