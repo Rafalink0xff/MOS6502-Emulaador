@@ -82,10 +82,53 @@ int main(int argc, char* argv[]) {
 
             ciclos -= 29780; // Zera a contagem para o próximo frame
 
-            // --- DESENHAR OS GRÁFICOS NA TELA (TILE VIEWER) ---
-            // Limpa a tela com fundo preto para preparar a folha de desenho
+            // --- DESENHAR O NAMETABLE (CENÁRIO) ---
+            // Limpa a tela com fundo preto
             SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
             SDL_RenderClear(renderizador);
+
+            // A tela do NES é uma grade de 32 colunas por 30 linhas (960 blocos no total)
+            for (int y = 0; y < 30; y++) {
+                for (int x = 0; x < 32; x++) {
+                    // O Nametable 0 fica no início da nossa VRAM (índice 0 ao 959)
+                    int vram_index = (y * 32) + x;
+
+                    // Lemos a ID da peça que o jogo quer que seja desenhada aqui
+                    uint8_t tile_id = barramento.ppu.vram[vram_index];
+
+                    // O Mario escolhe se o cenário usa a Tabela da Esquerda (0) ou Direita (4096)
+                    // Ele diz isso através do bit 4 do registrador PPUCTRL
+                    uint16_t padrao_banco = (barramento.ppu.ppu_ctrl & 0x10) ? 4096 : 0;
+                    uint16_t tile_endereco = padrao_banco + (tile_id * 16);
+
+                    // Desenha os 8x8 pixels dessa peça
+                    for (int linha = 0; linha < 8; linha++) {
+                        uint8_t byte1 = barramento.ppu.chr_rom[tile_endereco + linha];
+                        uint8_t byte2 = barramento.ppu.chr_rom[tile_endereco + linha + 8];
+
+                        for (int bit = 7; bit >= 0; bit--) {
+                            uint8_t color_bit1 = (byte1 >> bit) & 1;
+                            uint8_t color_bit2 = (byte2 >> bit) & 1;
+                            uint8_t color_val = (color_bit2 << 1) | color_bit1;
+
+                            // Cores temporárias (em tons de cinza) até implementarmos as Paletas reais
+                            if (color_val == 0) SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
+                            if (color_val == 1) SDL_SetRenderDrawColor(renderizador, 85, 85, 85, 255);
+                            if (color_val == 2) SDL_SetRenderDrawColor(renderizador, 170, 170, 170, 255);
+                            if (color_val == 3) SDL_SetRenderDrawColor(renderizador, 255, 255, 255, 255);
+
+                            // Calcula a coordenada exata na tela inteira
+                            int pixel_x = (x * 8) + (7 - bit);
+                            int pixel_y = (y * 8) + linha;
+
+                            // Se a cor for 0 (transparente), o NES desenha a cor de fundo (preto por enquanto)
+                            if (color_val != 0) {
+                                SDL_RenderDrawPoint(renderizador, pixel_x, pixel_y);
+                            }
+                        }
+                    }
+                }
+            }
 
             // O NES possui 512 blocos gráficos (Tiles) gravados no cartucho, cada um com 8x8 pixels.
             for (int tile = 0; tile < 512; tile++) {
