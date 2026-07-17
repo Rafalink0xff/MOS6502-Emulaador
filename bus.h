@@ -10,6 +10,9 @@ public:
 
     PPU ppu;
 
+    uint8_t controle_estado; // Guarda os 8 botões (1 bit pra cada)
+    uint8_t controle_shift;  // A fila que entrega um botão de cada vez para a CPU
+
     void Escrever(uint16_t endereco, uint8_t valor);
     uint8_t Ler(uint16_t endereco);
 };

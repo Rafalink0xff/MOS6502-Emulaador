@@ -5,6 +5,19 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 
+// Paleta de cores oficial do NES traduzida para RGB (Formato: R, G, B)
+struct RGB { uint8_t r, g, b; };
+const RGB NES_PALETTE[64] = {
+    {84, 84, 84}, {0, 30, 116}, {8, 16, 144}, {48, 0, 136}, {68, 0, 100}, {92, 0, 48}, {84, 4, 0}, {60, 24, 0},
+    {32, 42, 0}, {8, 58, 0}, {0, 64, 0}, {0, 60, 0}, {0, 50, 60}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {152, 150, 152}, {8, 76, 196}, {48, 50, 236}, {92, 30, 228}, {136, 20, 176}, {160, 20, 100}, {152, 34, 32}, {120, 60, 0},
+    {84, 90, 0}, {40, 114, 0}, {8, 124, 0}, {0, 118, 40}, {0, 102, 120}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {236, 238, 236}, {76, 154, 236}, {120, 124, 236}, {176, 98, 236}, {228, 84, 236}, {236, 88, 180}, {236, 106, 100}, {212, 136, 32},
+    {160, 170, 0}, {116, 196, 0}, {76, 208, 32}, {56, 204, 108}, {56, 180, 204}, {60, 60, 60}, {0, 0, 0}, {0, 0, 0},
+    {236, 238, 236}, {168, 204, 236}, {188, 188, 236}, {212, 178, 236}, {236, 174, 236}, {236, 174, 212}, {236, 180, 176}, {228, 196, 144},
+    {204, 210, 120}, {180, 222, 120}, {168, 226, 144}, {152, 226, 180}, {160, 214, 228}, {160, 162, 160}, {0, 0, 0}, {0, 0, 0}
+};
+
 int main(int argc, char* argv[]) {
     // --- 1. INICIALIZAÇÃO DA SDL2 ---
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -59,14 +72,10 @@ int main(int argc, char* argv[]) {
     std::cout << "--- INICIANDO O EMULADOR NES ---\n";
 
     // --- 3. O LOOP PRINCIPAL DO CONSOLE ---
-    while (rodando) {
-        // Escuta os eventos do Windows (Ex: Clicar no botão X para fechar a janela)
-        while (SDL_PollEvent(&evento)) {
-            if (evento.type == SDL_QUIT) {
-                rodando = false;
-            }
-        }
+    // Pega o acesso direto e contínuo ao estado físico de todas as teclas do seu teclado
+    const Uint8* estadoTeclado = SDL_GetKeyboardState(NULL);
 
+    while (rodando) {
         // A CPU corre processando as instruções do jogo!
         int ciclos_instrucao = minhaCpu.ExecutarCiclo();
         ciclos += ciclos_instrucao;
@@ -82,91 +91,121 @@ int main(int argc, char* argv[]) {
 
             ciclos -= 29780; // Zera a contagem para o próximo frame
 
-            // --- DESENHAR O NAMETABLE (CENÁRIO) ---
-            // Limpa a tela com fundo preto
+            // --- PROCESSAMENTO DE EVENTOS (Apenas 1x por frame!) ---
+            while (SDL_PollEvent(&evento)) {
+                if (evento.type == SDL_QUIT) {
+                    rodando = false;
+                }
+            }
+
+            // --- ATUALIZAR O CONTROLE (Joypad 1) ---
+            barramento.controle_estado = 0;
+
+            if (estadoTeclado[SDL_SCANCODE_X])      barramento.controle_estado |= (1 << 7); // A
+            if (estadoTeclado[SDL_SCANCODE_Z])      barramento.controle_estado |= (1 << 6); // B
+            if (estadoTeclado[SDL_SCANCODE_SPACE])  barramento.controle_estado |= (1 << 5); // Select
+            if (estadoTeclado[SDL_SCANCODE_RETURN]) barramento.controle_estado |= (1 << 4); // Start
+            if (estadoTeclado[SDL_SCANCODE_UP])     barramento.controle_estado |= (1 << 3); // Cima
+            if (estadoTeclado[SDL_SCANCODE_DOWN])   barramento.controle_estado |= (1 << 2); // Baixo
+            if (estadoTeclado[SDL_SCANCODE_LEFT])   barramento.controle_estado |= (1 << 1); // Esquerda
+            if (estadoTeclado[SDL_SCANCODE_RIGHT])  barramento.controle_estado |= (1 << 0); // Direita
+
+            // --- DESENHAR O NAMETABLE E SCROLL (CENÁRIO DUPLO) ---
             SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
             SDL_RenderClear(renderizador);
 
-            // A tela do NES é uma grade de 32 colunas por 30 linhas (960 blocos no total)
-            for (int y = 0; y < 30; y++) {
-                for (int x = 0; x < 32; x++) {
-                    // O Nametable 0 fica no início da nossa VRAM (índice 0 ao 959)
-                    int vram_index = (y * 32) + x;
+            int nametable_base = barramento.ppu.ppu_ctrl & 0x03;
+            int scroll_x_total = barramento.ppu.ppu_scroll_x + ((nametable_base & 1) * 256);
+            int scroll_y_total = barramento.ppu.ppu_scroll_y;
 
-                    // Lemos a ID da peça que o jogo quer que seja desenhada aqui
-                    uint8_t tile_id = barramento.ppu.vram[vram_index];
+            for (int nametable_offset = 0; nametable_offset < 2; nametable_offset++) {
+                int vram_nametable_base = nametable_offset * 1024;
 
-                    // O Mario escolhe se o cenário usa a Tabela da Esquerda (0) ou Direita (4096)
-                    // Ele diz isso através do bit 4 do registrador PPUCTRL
-                    uint16_t padrao_banco = (barramento.ppu.ppu_ctrl & 0x10) ? 4096 : 0;
-                    uint16_t tile_endereco = padrao_banco + (tile_id * 16);
+                for (int y = 0; y < 30; y++) {
+                    for (int x = 0; x < 32; x++) {
+                        int vram_index = vram_nametable_base + (y * 32) + x;
+                        uint8_t tile_id = barramento.ppu.vram[vram_index];
 
-                    // Desenha os 8x8 pixels dessa peça
-                    for (int linha = 0; linha < 8; linha++) {
-                        uint8_t byte1 = barramento.ppu.chr_rom[tile_endereco + linha];
-                        uint8_t byte2 = barramento.ppu.chr_rom[tile_endereco + linha + 8];
+                        uint16_t padrao_banco = (barramento.ppu.ppu_ctrl & 0x10) ? 4096 : 0;
+                        uint16_t tile_endereco = padrao_banco + (tile_id * 16);
 
-                        for (int bit = 7; bit >= 0; bit--) {
-                            uint8_t color_bit1 = (byte1 >> bit) & 1;
-                            uint8_t color_bit2 = (byte2 >> bit) & 1;
-                            uint8_t color_val = (color_bit2 << 1) | color_bit1;
+                        int atributo_index = vram_nametable_base + 960 + ((y / 4) * 8) + (x / 4);
+                        uint8_t atributo_byte = barramento.ppu.vram[atributo_index];
+                        int shift = (((y % 4) / 2) * 4) + (((x % 4) / 2) * 2);
+                        uint8_t paleta_id = (atributo_byte >> shift) & 0x03;
 
-                            // Cores temporárias (em tons de cinza) até implementarmos as Paletas reais
-                            if (color_val == 0) SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
-                            if (color_val == 1) SDL_SetRenderDrawColor(renderizador, 85, 85, 85, 255);
-                            if (color_val == 2) SDL_SetRenderDrawColor(renderizador, 170, 170, 170, 255);
-                            if (color_val == 3) SDL_SetRenderDrawColor(renderizador, 255, 255, 255, 255);
+                        for (int linha = 0; linha < 8; linha++) {
+                            uint8_t byte1 = barramento.ppu.chr_rom[tile_endereco + linha];
+                            uint8_t byte2 = barramento.ppu.chr_rom[tile_endereco + linha + 8];
 
-                            // Calcula a coordenada exata na tela inteira
-                            int pixel_x = (x * 8) + (7 - bit);
-                            int pixel_y = (y * 8) + linha;
+                            for (int bit = 7; bit >= 0; bit--) {
+                                uint8_t color_bit1 = (byte1 >> bit) & 1;
+                                uint8_t color_bit2 = (byte2 >> bit) & 1;
+                                uint8_t color_val = (color_bit2 << 1) | color_bit1;
 
-                            // Se a cor for 0 (transparente), o NES desenha a cor de fundo (preto por enquanto)
-                            if (color_val != 0) {
-                                SDL_RenderDrawPoint(renderizador, pixel_x, pixel_y);
+                                uint16_t paleta_endereco = (paleta_id * 4) + color_val;
+                                if (color_val == 0) paleta_endereco = 0;
+
+                                uint8_t nes_color = barramento.ppu.paleta[paleta_endereco];
+                                RGB rgb = NES_PALETTE[nes_color & 0x3F];
+                                SDL_SetRenderDrawColor(renderizador, rgb.r, rgb.g, rgb.b, 255);
+
+                                int pos_x_mundo = (nametable_offset * 256) + (x * 8) + (7 - bit);
+                                int pixel_x = (pos_x_mundo - scroll_x_total + 512) % 512;
+                                int pixel_y = (y * 8) + linha - scroll_y_total;
+
+                                if (pixel_x >= 0 && pixel_x < 256 && pixel_y >= 0 && pixel_y < 240) {
+                                    SDL_RenderDrawPoint(renderizador, pixel_x, pixel_y);
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // O NES possui 512 blocos gráficos (Tiles) gravados no cartucho, cada um com 8x8 pixels.
-            for (int tile = 0; tile < 512; tile++) {
-                int tile_x = (tile % 32) * 8; // Distribui desenhando 32 blocos por linha
-                int tile_y = (tile / 32) * 8; // Cria 16 linhas horizontais preenchidas
+            // --- DESENHAR OS SPRITES (OAM) ---
+            for (int i = 63; i >= 0; i--) {
+                int oam_index = i * 4;
+                uint8_t sprite_y = barramento.ppu.oam[oam_index];
+                uint8_t tile_id  = barramento.ppu.oam[oam_index + 1];
+                uint8_t atributo = barramento.ppu.oam[oam_index + 2];
+                uint8_t sprite_x = barramento.ppu.oam[oam_index + 3];
 
-                // Cada bloco é composto de 8 linhas horizontais de pixels
+                if (sprite_y >= 239) continue;
+
+                uint8_t paleta_id = (atributo & 0x03) + 4;
+                bool flip_h = atributo & 0x40;
+                bool flip_v = atributo & 0x80;
+
+                uint16_t padrao_banco = (barramento.ppu.ppu_ctrl & 0x08) ? 4096 : 0;
+                uint16_t tile_endereco = padrao_banco + (tile_id * 16);
+
                 for (int linha = 0; linha < 8; linha++) {
-                    // No NES, as cores de um bloco são formadas unindo bits de dois bytes separados na memória
-                    uint8_t byte1 = barramento.ppu.chr_rom[tile * 16 + linha];
-                    uint8_t byte2 = barramento.ppu.chr_rom[tile * 16 + linha + 8];
+                    int linha_real = flip_v ? (7 - linha) : linha;
+                    uint8_t byte1 = barramento.ppu.chr_rom[tile_endereco + linha_real];
+                    uint8_t byte2 = barramento.ppu.chr_rom[tile_endereco + linha_real + 8];
 
-                    // Varremos os 8 pixels de cada linha da direita para a esquerda (do bit 7 ao 0)
                     for (int bit = 7; bit >= 0; bit--) {
-                        uint8_t color_bit1 = (byte1 >> bit) & 1;
-                        uint8_t color_bit2 = (byte2 >> bit) & 1;
-
-                        // Juntamos as duas fatias de bits para gerar um ID de cor variando de 0 a 3
+                        int bit_real = flip_h ? (7 - bit) : bit;
+                        uint8_t color_bit1 = (byte1 >> bit_real) & 1;
+                        uint8_t color_bit2 = (byte2 >> bit_real) & 1;
                         uint8_t color_val = (color_bit2 << 1) | color_bit1;
 
-                        // Como ainda não temos paletas, traduzimos os IDs temporariamente para tons de cinza
-                        if (color_val == 0) SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);       // Preto/Transparente
-                        if (color_val == 1) SDL_SetRenderDrawColor(renderizador, 85, 85, 85, 255);    // Cinza Escuro
-                        if (color_val == 2) SDL_SetRenderDrawColor(renderizador, 170, 170, 170, 255); // Cinza Claro
-                        if (color_val == 3) SDL_SetRenderDrawColor(renderizador, 255, 255, 255, 255); // Branco
+                        if (color_val == 0) continue;
 
-                        int pixel_x = tile_x + (7 - bit);
-                        int pixel_y = tile_y + linha;
+                        uint16_t paleta_endereco = (paleta_id * 4) + color_val;
+                        uint8_t nes_color = barramento.ppu.paleta[paleta_endereco];
+                        RGB rgb = NES_PALETTE[nes_color & 0x3F];
+                        SDL_SetRenderDrawColor(renderizador, rgb.r, rgb.g, rgb.b, 255);
 
-                        // Se o pixel não for transparente (0), carimba ele na memória da placa de vídeo
-                        if (color_val != 0) {
-                            SDL_RenderDrawPoint(renderizador, pixel_x, pixel_y);
-                        }
+                        int pixel_x = sprite_x + (7 - bit);
+                        int pixel_y = sprite_y + linha;
+
+                        SDL_RenderDrawPoint(renderizador, pixel_x, pixel_y);
                     }
                 }
             }
 
-            // Dá o comando para a placa de vídeo pegar tudo e finalmente jogar na tela do usuário
             SDL_RenderPresent(renderizador);
         }
     }

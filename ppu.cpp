@@ -1,6 +1,8 @@
 #include "ppu.h"
 
 PPU::PPU() {
+    ppu_scroll_x = 0;
+    ppu_scroll_y = 0;
     nmi_ocorreu = false;
     ppu_ctrl = 0;
     vram_addr = 0; // ADICIONE ISSO
@@ -34,6 +36,15 @@ void PPU::EscreverRegistrador(uint16_t endereco, uint8_t valor) {
         case 0x2000: // PPUCTRL
             ppu_ctrl = valor;
             break;
+        case 0x2005: // PPUSCROLL
+            if (latch == false) {
+                ppu_scroll_x = valor; // Primeira escrita = Posição X
+                latch = true;
+            } else {
+                ppu_scroll_y = valor; // Segunda escrita = Posição Y
+                latch = false;
+            }
+            break;
         case 0x2006: // PPUADDR
             if (latch == false) {
                 // Primeira escrita: Pega o byte ALTO. Limpa os bits altos antigos e injeta os novos.
@@ -46,12 +57,16 @@ void PPU::EscreverRegistrador(uint16_t endereco, uint8_t valor) {
             }
             break;
         case 0x2007: // PPUDATA
-            // Salva o dado na VRAM usando o endereço que foi montado no $2006!
-            // O '& 0x07FF' mantém o acesso dentro do tamanho real da nossa VRAM (2KB)
-            vram[vram_addr & 0x07FF] = valor;
+            // Se o endereço estiver na área das Paletas ($3F00 a $3FFF)
+            if (vram_addr >= 0x3F00 && vram_addr <= 0x3FFF) {
+                // A memória de paleta tem só 32 bytes, então usamos a máscara 0x001F
+                paleta[vram_addr & 0x001F] = valor;
+            } else {
+                // Caso contrário, é VRAM normal (Nametable)
+                vram[vram_addr & 0x07FF] = valor;
+            }
 
-            // Magia do NES: A PPU avança o endereço sozinha após cada escrita!
-            // (Por padrão avança +1, mas pode avançar +32 dependendo do PPUCTRL)
+            // A PPU avança o endereço sozinha após cada escrita!
             if (ppu_ctrl & 0x04) vram_addr += 32;
             else                 vram_addr += 1;
             break;

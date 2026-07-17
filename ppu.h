@@ -5,6 +5,9 @@ class PPU {
 public:
     PPU();
 
+    uint8_t ppu_scroll_x;
+    uint8_t ppu_scroll_y;
+
     uint8_t chr_rom[8192]; // Os 8KB de gráficos (Tiles e Sprites) do cartucho
 
     uint8_t vram[2048];
