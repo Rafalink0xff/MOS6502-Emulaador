@@ -4,13 +4,18 @@ project(EmuladorNES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# --- CONFIGURAÇÃO MANUAL DA SDL2 ---
-# Ajuste este caminho se o seu MSYS2 não estiver em C:/msys64
-set(SDL2_ROOT "C:/msys64/mingw64")
+# --- CONFIGURAÇÃO DA SDL2 ---
+# Verifica se a pasta existe, senão avisa o erro de forma clara
+set(SDL2_PATH "C:/msys64/mingw64")
 
-include_directories(${SDL2_ROOT}/include)
-link_directories(${SDL2_ROOT}/lib)
+if(NOT EXISTS "${SDL2_PATH}/include/SDL2")
+    message(FATAL_ERROR "Nao encontrei a SDL2 em ${SDL2_PATH}. Verifique o caminho!")
+endif()
 
+include_directories("${SDL2_PATH}/include")
+link_directories("${SDL2_PATH}/lib")
+
+# Lista de arquivos
 add_executable(EmuladorNES
         main.cpp
         cpu.cpp
@@ -22,13 +27,11 @@ add_executable(EmuladorNES
         ppu.h
 )
 
-# Linka a SDL2 e a biblioteca de threads que ela precisa
+# Linkagem
 target_link_libraries(EmuladorNES SDL2 SDL2main)
 
 if(WIN32)
-    # Garante que abra o console + a janela gráfica
-    set_target_properties(EmuladorNES PROPERTIES
-            LINK_FLAGS "-mconsole -Wl,--subsystem,console"
-    )
+    set_target_properties(EmuladorNES PROPERTIES LINK_FLAGS "-mconsole -Wl,--subsystem,console")
+endif()
 
-    target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

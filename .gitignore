@@ -13,3 +13,7 @@ x64/
 
 # Ignorar a ROM do jogo (Direitos Autorais)
 *.nes
+
+# Ignorar pastas de build do CMake (Windows e Linux)
+build/
+build_linux/

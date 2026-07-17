@@ -58,6 +58,7 @@ int CPU::ExecutarCiclo() {
         case 0xA4: Instrucao_LDY(ModoZeroPage());  break;
         case 0xAC: Instrucao_LDY(ModoAbsoluto()); break;
         case 0xBC: Instrucao_LDY(ModoAbsolutoX()); break;
+        case 0xB4: Instrucao_LDY(ModoZeroPageX()); break;
         case 0x8D: Instrucao_STA(ModoAbsoluto());  break;
         case 0x95: Instrucao_STA(ModoZeroPageX()); break;
         case 0x8E: Instrucao_STX(ModoAbsoluto());  break;
@@ -65,6 +66,7 @@ int CPU::ExecutarCiclo() {
         case 0x86: Instrucao_STX(ModoZeroPage());  break;
         case 0x8C: Instrucao_STY(ModoAbsoluto());  break;
         case 0x84: Instrucao_STY(ModoZeroPage());  break;
+        case 0x94: Instrucao_STY(ModoZeroPageX()); break;
         case 0x91: Instrucao_STA(ModoIndiretoY()); break;
         case 0x99: Instrucao_STA(ModoAbsolutoY()); break;
         case 0x9D: Instrucao_STA(ModoAbsolutoX()); break;
@@ -109,6 +111,7 @@ int CPU::ExecutarCiclo() {
         case 0xED: Instrucao_SBC(ModoAbsoluto()); break;
         case 0xE9: Instrucao_SBC(ModoImediato());  break;
         case 0xF5: Instrucao_SBC(ModoZeroPageX()); break;
+        case 0xE5: Instrucao_SBC(ModoZeroPage()); break;
         case 0x6D: Instrucao_ADC(ModoAbsoluto());  break;
         case 0x7D: Instrucao_ADC(ModoAbsolutoX()); break;
         case 0xD5: Instrucao_CMP(ModoZeroPageX()); break;
@@ -128,6 +131,7 @@ int CPU::ExecutarCiclo() {
         case 0x09: Instrucao_ORA(ModoImediato()); break;
         case 0x0D: Instrucao_ORA(ModoAbsoluto()); break;
         case 0x05: Instrucao_ORA(ModoZeroPage()); break;
+        case 0x1D: Instrucao_ORA(ModoAbsolutoX()); break;
         case 0x29: Instrucao_AND(ModoImediato()); break;
         case 0x2D: Instrucao_AND(ModoAbsoluto()); break;
         case 0x3D: Instrucao_AND(ModoAbsolutoX()); break;

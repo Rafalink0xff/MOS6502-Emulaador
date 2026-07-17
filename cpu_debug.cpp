@@ -33,6 +33,27 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
         case 0x48: ss << "48       PHA"; endereco += 1; break;
 
         // --- 2 Bytes ---
+        case 0x94:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "94 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       STY $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0xE5:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "E5 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       SBC $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xB4:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "B4 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       LDY $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
         case 0x25:
         {
             uint8_t zp = bus->Ler(endereco + 1);
@@ -302,6 +323,13 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
         }
 
         // --- 3 Bytes ---
+        case 0x1D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "1D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ORA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
         case 0x75:
         {
             uint8_t zp = bus->Ler(endereco + 1);

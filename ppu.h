@@ -5,6 +5,8 @@ class PPU {
 public:
     PPU();
 
+    uint8_t chr_rom[8192]; // Os 8KB de gráficos (Tiles e Sprites) do cartucho
+
     uint8_t vram[2048];
     uint8_t paleta[32];
     uint8_t oam[256];

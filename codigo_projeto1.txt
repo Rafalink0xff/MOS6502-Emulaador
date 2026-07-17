@@ -1,7 +1,7 @@
 ================================================================================
 Arquivo: bus.cpp
 Caminho relativo: bus.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\bus.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\bus.cpp
 ================================================================================
 
 #include "bus.h"
@@ -36,7 +36,7 @@ void Bus::Escrever(uint16_t endereco, uint8_t valor) {
 ================================================================================
 Arquivo: bus.h
 Caminho relativo: bus.h
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\bus.h
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\bus.h
 ================================================================================
 
 #pragma once
@@ -58,42 +58,51 @@ public:
 ================================================================================
 Arquivo: CMakeLists.txt
 Caminho relativo: CMakeLists.txt
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\CMakeLists.txt
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\CMakeLists.txt
 ================================================================================
 
 cmake_minimum_required(VERSION 3.20)
 project(EmuladorNES CXX)
 
-# Força o CLion a usar o padrão estável moderno do C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Informa ao CMake todos os nossos novos módulos separados
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# --- CONFIGURAÇÃO DA SDL2 ---
+# Verifica se a pasta existe, senão avisa o erro de forma clara
+set(SDL2_PATH "C:/msys64/mingw64")
 
-# 1. Avisa o CMake para caçar a SDL2 que acabamos de instalar no MSYS2
-find_package(SDL2 REQUIRED)
+if(NOT EXISTS "${SDL2_PATH}/include/SDL2")
+    message(FATAL_ERROR "Nao encontrei a SDL2 em ${SDL2_PATH}. Verifique o caminho!")
+endif()
 
-add_executable(EmuladorNES main.cpp cpu.cpp cpu_modos.cpp cpu_instrucoes.cpp cpu_debug.cpp bus.cpp ppu.cpp ppu.h)
+include_directories("${SDL2_PATH}/include")
+link_directories("${SDL2_PATH}/lib")
 
-# 2. Adiciona as pastas de "includes" (os arquivos .h da SDL2)
-target_include_directories(EmuladorNES PRIVATE ${SDL2_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
+# Lista de arquivos
+add_executable(EmuladorNES
+        main.cpp
+        cpu.cpp
+        cpu_modos.cpp
+        cpu_instrucoes.cpp
+        cpu_debug.cpp
+        bus.cpp
+        ppu.cpp
+        ppu.h
+)
 
-# 3. Faz o Linker juntar o código da biblioteca no nosso .exe
-target_link_libraries(EmuladorNES ${SDL2_LIBRARIES})
+# Linkagem
+target_link_libraries(EmuladorNES SDL2 SDL2main)
 
 if(WIN32)
     set_target_properties(EmuladorNES PROPERTIES LINK_FLAGS "-mconsole -Wl,--subsystem,console")
 endif()
 
-# Garante que o executável consiga achar arquivos na mesma pasta
 target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 ================================================================================
 Arquivo: cpu.cpp
 Caminho relativo: cpu.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\cpu.cpp
 ================================================================================
 
 #include "cpu.h"
@@ -156,6 +165,7 @@ int CPU::ExecutarCiclo() {
         case 0xA4: Instrucao_LDY(ModoZeroPage());  break;
         case 0xAC: Instrucao_LDY(ModoAbsoluto()); break;
         case 0xBC: Instrucao_LDY(ModoAbsolutoX()); break;
+        case 0xB4: Instrucao_LDY(ModoZeroPageX()); break;
         case 0x8D: Instrucao_STA(ModoAbsoluto());  break;
         case 0x95: Instrucao_STA(ModoZeroPageX()); break;
         case 0x8E: Instrucao_STX(ModoAbsoluto());  break;
@@ -163,6 +173,7 @@ int CPU::ExecutarCiclo() {
         case 0x86: Instrucao_STX(ModoZeroPage());  break;
         case 0x8C: Instrucao_STY(ModoAbsoluto());  break;
         case 0x84: Instrucao_STY(ModoZeroPage());  break;
+        case 0x94: Instrucao_STY(ModoZeroPageX()); break;
         case 0x91: Instrucao_STA(ModoIndiretoY()); break;
         case 0x99: Instrucao_STA(ModoAbsolutoY()); break;
         case 0x9D: Instrucao_STA(ModoAbsolutoX()); break;
@@ -207,6 +218,7 @@ int CPU::ExecutarCiclo() {
         case 0xED: Instrucao_SBC(ModoAbsoluto()); break;
         case 0xE9: Instrucao_SBC(ModoImediato());  break;
         case 0xF5: Instrucao_SBC(ModoZeroPageX()); break;
+        case 0xE5: Instrucao_SBC(ModoZeroPage()); break;
         case 0x6D: Instrucao_ADC(ModoAbsoluto());  break;
         case 0x7D: Instrucao_ADC(ModoAbsolutoX()); break;
         case 0xD5: Instrucao_CMP(ModoZeroPageX()); break;
@@ -226,6 +238,7 @@ int CPU::ExecutarCiclo() {
         case 0x09: Instrucao_ORA(ModoImediato()); break;
         case 0x0D: Instrucao_ORA(ModoAbsoluto()); break;
         case 0x05: Instrucao_ORA(ModoZeroPage()); break;
+        case 0x1D: Instrucao_ORA(ModoAbsolutoX()); break;
         case 0x29: Instrucao_AND(ModoImediato()); break;
         case 0x2D: Instrucao_AND(ModoAbsoluto()); break;
         case 0x3D: Instrucao_AND(ModoAbsolutoX()); break;
@@ -305,7 +318,7 @@ uint8_t CPU::Pop() {
 ================================================================================
 Arquivo: cpu.h
 Caminho relativo: cpu.h
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu.h
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\cpu.h
 ================================================================================
 
 #pragma once
@@ -411,7 +424,7 @@ private:
 ================================================================================
 Arquivo: cpu_debug.cpp
 Caminho relativo: cpu_debug.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu_debug.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\cpu_debug.cpp
 ================================================================================
 
 #include "cpu.h"
@@ -449,6 +462,27 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
         case 0x48: ss << "48       PHA"; endereco += 1; break;
 
         // --- 2 Bytes ---
+        case 0x94:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "94 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       STY $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0xE5:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "E5 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       SBC $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xB4:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "B4 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       LDY $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
         case 0x25:
         {
             uint8_t zp = bus->Ler(endereco + 1);
@@ -718,6 +752,13 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
         }
 
         // --- 3 Bytes ---
+        case 0x1D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "1D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ORA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
         case 0x75:
         {
             uint8_t zp = bus->Ler(endereco + 1);
@@ -983,7 +1024,7 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
 ================================================================================
 Arquivo: cpu_instrucoes.cpp
 Caminho relativo: cpu_instrucoes.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu_instrucoes.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\cpu_instrucoes.cpp
 ================================================================================
 
 #include "cpu.h"
@@ -1441,7 +1482,7 @@ void CPU::Instrucao_ASL(uint16_t endereco) {
 ================================================================================
 Arquivo: cpu_modos.cpp
 Caminho relativo: cpu_modos.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu_modos.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\cpu_modos.cpp
 ================================================================================
 
 #include "cpu.h"
@@ -1508,14 +1549,15 @@ uint16_t CPU::ModoIndiretoY() {
 ================================================================================
 Arquivo: main.cpp
 Caminho relativo: main.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\main.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\main.cpp
 ================================================================================
 
 #include "cpu.h"
 #include "bus.h"
-#include
-#include
-#include  // O Cabeçalho mágico da nossa TV!
+#include <iostream>
+#include <fstream>
+#define SDL_MAIN_HANDLED
+#include <SDL2/SDL.h>
 
 int main(int argc, char* argv[]) {
     // --- 1. INICIALIZAÇÃO DA SDL2 ---
@@ -1532,6 +1574,9 @@ int main(int argc, char* argv[]) {
     // Cria o Renderizador (A Placa de Vídeo acelerada por Hardware)
     SDL_Renderer* renderizador = SDL_CreateRenderer(janela, -1, SDL_RENDERER_ACCELERATED);
 
+    // Escala tudo em 3x para que o NES de 256x240 preencha a nossa janela de forma nativa
+    SDL_RenderSetScale(renderizador, 3.0f, 3.0f);
+
     // Pinta a tela de preto para começar
     SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
     SDL_RenderClear(renderizador);
@@ -1542,16 +1587,24 @@ int main(int argc, char* argv[]) {
     Bus barramento;
     CPU minhaCpu(&barramento);
 
+    // Abre o arquivo do jogo (A ROM do Super Mario Bros)
     std::ifstream arquivo("mario.nes", std::ios::binary);
     if (!arquivo) {
         std::cout << "ERRO: Nao foi possivel abrir o arquivo mario.nes!\n";
         return 1;
     }
 
+    // Pula o cabeçalho iNES (16 bytes) e carrega a PRG-ROM (O código-fonte de 32KB)
     arquivo.seekg(16, std::ios::beg);
-    arquivo.read(reinterpret_cast(barramento.cartucho), 32768);
-    std::cout << "[Cartucho] Jogo carregado na memoria com sucesso!\n";
+    arquivo.read(reinterpret_cast<char*>(barramento.cartucho), 32768);
+    std::cout << "[Cartucho] PRG-ROM (Codigo) carregada com sucesso!\n";
 
+    // Lê a CHR-ROM (Gráficos da PPU de 8KB) exatamente após o código
+    arquivo.seekg(16 + 32768, std::ios::beg);
+    arquivo.read(reinterpret_cast<char*>(barramento.ppu.chr_rom), 8192);
+    std::cout << "[Cartucho] CHR-ROM (Graficos) carregada com sucesso!\n";
+
+    // Liga a CPU na tomada
     minhaCpu.Reset();
     int ciclos = 0;
     bool rodando = true;
@@ -1561,30 +1614,76 @@ int main(int argc, char* argv[]) {
 
     // --- 3. O LOOP PRINCIPAL DO CONSOLE ---
     while (rodando) {
-        // Escuta os eventos do Windows (Ex: Clicar no X para fechar a janela)
+        // Escuta os eventos do Windows (Ex: Clicar no botão X para fechar a janela)
         while (SDL_PollEvent(&evento)) {
             if (evento.type == SDL_QUIT) {
                 rodando = false;
             }
         }
 
-        // A CPU corre!
+        // A CPU corre processando as instruções do jogo!
         int ciclos_instrucao = minhaCpu.ExecutarCiclo();
         ciclos += ciclos_instrucao;
 
-        // O VBlank acontece
+        // O VBlank acontece a cada 29780 ciclos (Equivale a 1 Frame gerado no monitor a 60Hz)
         if (ciclos >= 29780) {
             barramento.ppu.nmi_ocorreu = true;
 
+            // Se a tela estiver habilitada no PPUCTRL, envia a interrupção pra CPU desenhar
             if (barramento.ppu.ppu_ctrl & 0x80) {
                 minhaCpu.NMI();
             }
 
-            ciclos -= 29780;
+            ciclos -= 29780; // Zera a contagem para o próximo frame
+
+            // --- DESENHAR OS GRÁFICOS NA TELA (TILE VIEWER) ---
+            // Limpa a tela com fundo preto para preparar a folha de desenho
+            SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
+            SDL_RenderClear(renderizador);
+
+            // O NES possui 512 blocos gráficos (Tiles) gravados no cartucho, cada um com 8x8 pixels.
+            for (int tile = 0; tile < 512; tile++) {
+                int tile_x = (tile % 32) * 8; // Distribui desenhando 32 blocos por linha
+                int tile_y = (tile / 32) * 8; // Cria 16 linhas horizontais preenchidas
+
+                // Cada bloco é composto de 8 linhas horizontais de pixels
+                for (int linha = 0; linha < 8; linha++) {
+                    // No NES, as cores de um bloco são formadas unindo bits de dois bytes separados na memória
+                    uint8_t byte1 = barramento.ppu.chr_rom[tile * 16 + linha];
+                    uint8_t byte2 = barramento.ppu.chr_rom[tile * 16 + linha + 8];
+
+                    // Varremos os 8 pixels de cada linha da direita para a esquerda (do bit 7 ao 0)
+                    for (int bit = 7; bit >= 0; bit--) {
+                        uint8_t color_bit1 = (byte1 >> bit) & 1;
+                        uint8_t color_bit2 = (byte2 >> bit) & 1;
+
+                        // Juntamos as duas fatias de bits para gerar um ID de cor variando de 0 a 3
+                        uint8_t color_val = (color_bit2 << 1) | color_bit1;
+
+                        // Como ainda não temos paletas, traduzimos os IDs temporariamente para tons de cinza
+                        if (color_val == 0) SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);       // Preto/Transparente
+                        if (color_val == 1) SDL_SetRenderDrawColor(renderizador, 85, 85, 85, 255);    // Cinza Escuro
+                        if (color_val == 2) SDL_SetRenderDrawColor(renderizador, 170, 170, 170, 255); // Cinza Claro
+                        if (color_val == 3) SDL_SetRenderDrawColor(renderizador, 255, 255, 255, 255); // Branco
+
+                        int pixel_x = tile_x + (7 - bit);
+                        int pixel_y = tile_y + linha;
+
+                        // Se o pixel não for transparente (0), carimba ele na memória da placa de vídeo
+                        if (color_val != 0) {
+                            SDL_RenderDrawPoint(renderizador, pixel_x, pixel_y);
+                        }
+                    }
+                }
+            }
+
+            // Dá o comando para a placa de vídeo pegar tudo e finalmente jogar na tela do usuário
+            SDL_RenderPresent(renderizador);
         }
     }
 
     // --- 4. DESLIGANDO A TV ---
+    std::cout << "[Sistema] Encerrando emulador...\n";
     SDL_DestroyRenderer(renderizador);
     SDL_DestroyWindow(janela);
     SDL_Quit();
@@ -1595,7 +1694,7 @@ int main(int argc, char* argv[]) {
 ================================================================================
 Arquivo: ppu.cpp
 Caminho relativo: ppu.cpp
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\ppu.cpp
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\ppu.cpp
 ================================================================================
 
 #include "ppu.h"
@@ -1661,7 +1760,7 @@ void PPU::EscreverRegistrador(uint16_t endereco, uint8_t valor) {
 ================================================================================
 Arquivo: ppu.h
 Caminho relativo: ppu.h
-Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\ppu.h
+Caminho completo: C:\Users\bruno\Documents\Projetos\NES-EMU-OFC\MOS6502-Emulaador\ppu.h
 ================================================================================
 
 #pragma once
@@ -1670,6 +1769,8 @@ Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emu
 class PPU {
 public:
     PPU();
+
+    uint8_t chr_rom[8192]; // Os 8KB de gráficos (Tiles e Sprites) do cartucho
 
     uint8_t vram[2048];
     uint8_t paleta[32];
