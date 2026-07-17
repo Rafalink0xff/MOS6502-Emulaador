@@ -4,20 +4,27 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent
 
 # Arquivo de saída
-ARQUIVO_SAIDA = RAIZ / "codigo_projeto.txt"
+ARQUIVO_SAIDA = RAIZ / "codigo_projeto1.txt"
 
 # Extensões desejadas
 EXTENSOES = {".cpp", ".h"}
 
+# Nome de arquivos extras que também devem ser incluídos
+ARQUIVOS_EXTRAS = {"CMakeLists.txt"}
+
 # Apenas arquivos da pasta raiz (não percorre subpastas)
 arquivos = sorted(
     arquivo for arquivo in RAIZ.iterdir()
-    if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES
+    if arquivo.is_file()
+    and (
+            arquivo.suffix.lower() in EXTENSOES
+            or arquivo.name in ARQUIVOS_EXTRAS
+    )
 )
 
 with ARQUIVO_SAIDA.open("w", encoding="utf-8") as saida:
     if not arquivos:
-        saida.write("Nenhum arquivo .cpp ou .h encontrado na pasta raiz.\n")
+        saida.write("Nenhum arquivo .cpp, .h ou CMakeLists.txt encontrado na pasta raiz.\n")
     else:
         for arquivo in arquivos:
             saida.write("=" * 80 + "\n")

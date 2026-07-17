@@ -1,0 +1,1687 @@
+================================================================================
+Arquivo: bus.cpp
+Caminho relativo: bus.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\bus.cpp
+================================================================================
+
+#include "bus.h"
+
+Bus::Bus() {
+    for (int i = 0; i < 2048; i++) cpuRam[i] = 0;
+    for (int i = 0; i < 32768; i++) cartucho[i] = 0;
+}
+
+uint8_t Bus::Ler(uint16_t endereco) {
+    if (endereco >= 0x0000 && endereco <= 0x1FFF) {
+        return cpuRam[endereco & 0x07FF];
+    }
+    if (endereco >= 0x2000 && endereco <= 0x3FFF) {
+        return ppu.LerRegistrador(endereco & 0x2007); // Rota para a PPU!
+    }
+    if (endereco >= 0x8000 && endereco <= 0xFFFF) {
+        return cartucho[endereco - 0x8000];
+    }
+    return 0;
+}
+
+void Bus::Escrever(uint16_t endereco, uint8_t valor) {
+    if (endereco >= 0x0000 && endereco <= 0x1FFF) {
+        cpuRam[endereco & 0x07FF] = valor;
+    }
+    else if (endereco >= 0x2000 && endereco <= 0x3FFF) {
+        ppu.EscreverRegistrador(endereco & 0x2007, valor); // Rota para a PPU!
+    }
+}
+
+================================================================================
+Arquivo: bus.h
+Caminho relativo: bus.h
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\bus.h
+================================================================================
+
+#pragma once
+#include <cstdint>
+#include "ppu.h"
+
+class Bus {
+public:
+    Bus();
+    uint8_t cpuRam[2048];    // 2KB de RAM física do NES
+    uint8_t cartucho[32768]; // 32KB de ROM do Cartucho
+
+    PPU ppu;
+
+    void Escrever(uint16_t endereco, uint8_t valor);
+    uint8_t Ler(uint16_t endereco);
+};
+
+================================================================================
+Arquivo: CMakeLists.txt
+Caminho relativo: CMakeLists.txt
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\CMakeLists.txt
+================================================================================
+
+cmake_minimum_required(VERSION 3.20)
+project(EmuladorNES CXX)
+
+# Força o CLion a usar o padrão estável moderno do C++17
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Informa ao CMake todos os nossos novos módulos separados
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 1. Avisa o CMake para caçar a SDL2 que acabamos de instalar no MSYS2
+find_package(SDL2 REQUIRED)
+
+add_executable(EmuladorNES main.cpp cpu.cpp cpu_modos.cpp cpu_instrucoes.cpp cpu_debug.cpp bus.cpp ppu.cpp ppu.h)
+
+# 2. Adiciona as pastas de "includes" (os arquivos .h da SDL2)
+target_include_directories(EmuladorNES PRIVATE ${SDL2_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
+
+# 3. Faz o Linker juntar o código da biblioteca no nosso .exe
+target_link_libraries(EmuladorNES ${SDL2_LIBRARIES})
+
+if(WIN32)
+    set_target_properties(EmuladorNES PROPERTIES LINK_FLAGS "-mconsole -Wl,--subsystem,console")
+endif()
+
+# Garante que o executável consiga achar arquivos na mesma pasta
+target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+================================================================================
+Arquivo: cpu.cpp
+Caminho relativo: cpu.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu.cpp
+================================================================================
+
+#include "cpu.h"
+#include <iostream>
+#include <cstdlib>
+
+CPU::CPU(Bus* b) {
+    bus = b;
+    vblank_ativo = false;
+}
+
+void CPU::Reset() {
+    A = 0; X = 0; Y = 0; SP = 0xFD; Status = 0x24;
+
+    uint8_t low = bus->Ler(0xFFFC);
+    uint8_t high = bus->Ler(0xFFFD);
+    PC = (high << 8) | low;
+}
+
+void CPU::NMI() {
+    static int contador_frames = 0;
+    contador_frames++;
+    if (contador_frames % 60 == 0) {
+        std::cout << "[Sistema] 60 frames processados! (1 seg. de jogo real)\n";
+    }
+    Push((PC >> 8) & 0xFF);
+    Push(PC & 0xFF);
+    Push(Status | 0x20);
+    Status |= 0x04;
+
+    uint8_t low = LerMemoria(0xFFFA);
+    uint8_t high = LerMemoria(0xFFFB);
+    PC = (high << 8) | low;
+}
+
+void CPU::GatilhoVBlank() {
+    vblank_ativo = true;
+    if (bus->Ler(0x2000) & 0x80) {
+        NMI();
+    }
+}
+
+int CPU::ExecutarCiclo() {
+    // uint16_t pc_atual = PC;
+    // std::cout << DisassembleInstrucao(pc_atual) << "\n";
+
+    uint8_t opcode = LerMemoria(PC);
+    PC++;
+
+    switch (opcode) {
+        case 0xA9: Instrucao_LDA(ModoImediato());  break;
+        case 0xA5: Instrucao_LDA(ModoZeroPage());  break;
+        case 0xA6: Instrucao_LDX(ModoZeroPage());  break;
+        case 0xAD: Instrucao_LDA(ModoAbsoluto()); break;
+        case 0xBD: Instrucao_LDA(ModoAbsolutoX()); break;
+        case 0xB9: Instrucao_LDA(ModoAbsolutoY()); break;
+        case 0xB1: Instrucao_LDA(ModoIndiretoY()); break;
+        case 0xB5: Instrucao_LDA(ModoZeroPageX()); break;
+        case 0xA0: Instrucao_LDY(ModoImediato());  break;
+        case 0xA4: Instrucao_LDY(ModoZeroPage());  break;
+        case 0xAC: Instrucao_LDY(ModoAbsoluto()); break;
+        case 0xBC: Instrucao_LDY(ModoAbsolutoX()); break;
+        case 0x8D: Instrucao_STA(ModoAbsoluto());  break;
+        case 0x95: Instrucao_STA(ModoZeroPageX()); break;
+        case 0x8E: Instrucao_STX(ModoAbsoluto());  break;
+        case 0x85: Instrucao_STA(ModoZeroPage());  break;
+        case 0x86: Instrucao_STX(ModoZeroPage());  break;
+        case 0x8C: Instrucao_STY(ModoAbsoluto());  break;
+        case 0x84: Instrucao_STY(ModoZeroPage());  break;
+        case 0x91: Instrucao_STA(ModoIndiretoY()); break;
+        case 0x99: Instrucao_STA(ModoAbsolutoY()); break;
+        case 0x9D: Instrucao_STA(ModoAbsolutoX()); break;
+
+        case 0xAA: Instrucao_TAX(); break;
+        case 0x8A: Instrucao_TXA(); break;
+        case 0xE8:
+            X = X + 1;
+            AtualizarFlagsZeroENegativo(X);
+            break;
+        case 0xA2: Instrucao_LDX(ModoImediato());  break;
+        case 0xAE: Instrucao_LDX(ModoAbsoluto());  break;
+        case 0xBE: Instrucao_LDX(ModoAbsolutoY()); break;
+        case 0xCA: Instrucao_DEX(); break;
+        case 0xC8: Instrucao_INY(0); break;
+        case 0x88: Instrucao_DEY(); break;
+        case 0xC9: Instrucao_CMP(ModoImediato()); break;
+        case 0xC5: Instrucao_CMP(ModoZeroPage()); break;
+        case 0xCD: Instrucao_CMP(ModoAbsoluto()); break;
+        case 0xD9: Instrucao_CMP(ModoAbsolutoY()); break;
+        case 0xE0: Instrucao_CPX(ModoImediato()); break;
+        case 0xA8: Instrucao_TAY(); break;
+        case 0x98: Instrucao_TYA(); break;
+        case 0xC0: Instrucao_CPY(ModoImediato()); break;
+        case 0x2C: Instrucao_BIT(ModoAbsoluto()); break;
+        case 0x24: Instrucao_BIT(ModoZeroPage()); break;
+        case 0xEE: Instrucao_INC(ModoAbsoluto()); break;
+        case 0xCE: Instrucao_DEC(ModoAbsoluto()); break;
+        case 0xC6: Instrucao_DEC(ModoZeroPage()); break;
+        case 0xDE: Instrucao_DEC(ModoAbsolutoX()); break;
+        case 0x4A: Instrucao_LSR_Acumulador();    break;
+        case 0x46: Instrucao_LSR(ModoZeroPage()); break;
+        case 0x4E: Instrucao_LSR(ModoAbsoluto()); break;
+        case 0x0A: Instrucao_ASL_Acumulador();    break;
+        case 0x0E: Instrucao_ASL(ModoAbsoluto()); break;
+        case 0x2A: Instrucao_ROL_Acumulador();    break;
+        case 0x6A: Instrucao_ROR_A(); break;
+        case 0x26: Instrucao_ROL(ModoZeroPage()); break;
+        case 0x2E: Instrucao_ROL(ModoAbsoluto()); break;
+        case 0x7E: Instrucao_ROR(ModoAbsolutoX()); break;
+        case 0xF9: Instrucao_SBC(ModoAbsolutoY()); break;
+        case 0xED: Instrucao_SBC(ModoAbsoluto()); break;
+        case 0xE9: Instrucao_SBC(ModoImediato());  break;
+        case 0xF5: Instrucao_SBC(ModoZeroPageX()); break;
+        case 0x6D: Instrucao_ADC(ModoAbsoluto());  break;
+        case 0x7D: Instrucao_ADC(ModoAbsolutoX()); break;
+        case 0xD5: Instrucao_CMP(ModoZeroPageX()); break;
+        case 0xDD: Instrucao_CMP(ModoAbsolutoX()); break;
+        case 0x79: Instrucao_ADC(ModoAbsolutoY()); break;
+        case 0x65: Instrucao_ADC(ModoZeroPage());  break;
+        case 0x75: Instrucao_ADC(ModoZeroPageX()); break;
+        case 0x69: Instrucao_ADC(ModoImediato());  break;
+        case 0xE6: Instrucao_INC(ModoZeroPage()); break;
+
+        case 0x10: Instrucao_BPL(ModoRelativo()); break;
+        case 0x30: Instrucao_BMI(ModoRelativo()); break;
+        case 0xB0: Instrucao_BCS(ModoRelativo()); break;
+        case 0x90: Instrucao_BCC(ModoRelativo()); break;
+        case 0xD0: Instrucao_BNE(ModoRelativo()); break;
+        case 0xF0: Instrucao_BEQ(ModoRelativo()); break;
+        case 0x09: Instrucao_ORA(ModoImediato()); break;
+        case 0x0D: Instrucao_ORA(ModoAbsoluto()); break;
+        case 0x05: Instrucao_ORA(ModoZeroPage()); break;
+        case 0x29: Instrucao_AND(ModoImediato()); break;
+        case 0x2D: Instrucao_AND(ModoAbsoluto()); break;
+        case 0x3D: Instrucao_AND(ModoAbsolutoX()); break;
+        case 0x39: Instrucao_AND(ModoAbsolutoY()); break;
+        case 0x25: Instrucao_AND(ModoZeroPage()); break;
+        case 0x45: Instrucao_EOR(ModoZeroPage()); break;
+        case 0x49: Instrucao_EOR(ModoImediato());  break;
+
+        case 0x9A: SP = X; break;
+        case 0x78: Status |= 0x04; break;
+        case 0xD8: Status &= ~0x08; break;
+        case 0x48: Instrucao_PHA(); break;
+        case 0x68: Instrucao_PLA(); break;
+        case 0x38: Instrucao_SEC(); break;
+        case 0x18: Instrucao_CLC(); break;
+
+        case 0x20: Instrucao_JSR(ModoAbsoluto()); break;
+        case 0x60: Instrucao_RTS(); break;
+        case 0x40: Instrucao_RTI(); break;
+        case 0x4C: Instrucao_JMP(ModoAbsoluto()); break;
+        case 0x6C: Instrucao_JMP(ModoIndireto()); break;
+
+        case 0x00:
+            std::cout << "Interrupcao forcada (BRK).\n";
+            exit(0);
+
+        default:
+            std::cout << "\nERRO FATAL: Instrucao desconhecida lida pela CPU! Opcode: 0x"
+                      << std::uppercase << std::hex << (int)opcode
+                      << " no PC: 0x" << PC-1 << "\n";
+            std::cout << "Pressione ENTER para sair...\n";
+            std::cin.get();
+            exit(1);
+    }
+
+    static const uint8_t CICLOS_6502[256] = {
+        7, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6,
+        2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+        6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 4, 4, 6, 6,
+        2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+        6, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 3, 4, 6, 6,
+        2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+        6, 6, 2, 8, 3, 3, 5, 5, 4, 2, 2, 2, 5, 4, 6, 6,
+        2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+        2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
+        2, 6, 2, 6, 4, 4, 4, 4, 2, 5, 2, 5, 5, 5, 5, 5,
+        2, 6, 2, 6, 3, 3, 3, 3, 2, 2, 2, 2, 4, 4, 4, 4,
+        2, 5, 2, 5, 4, 4, 4, 4, 2, 4, 2, 4, 4, 4, 4, 4,
+        2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
+        2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7,
+        2, 6, 2, 8, 3, 3, 5, 5, 2, 2, 2, 2, 4, 4, 6, 6,
+        2, 5, 2, 8, 4, 4, 6, 6, 2, 4, 2, 7, 4, 4, 7, 7
+    };
+
+    return CICLOS_6502[opcode];
+}
+
+uint8_t CPU::LerMemoria(uint16_t endereco) {
+    // A CPU não intercepta mais NADA. Ela só confia no barramento.
+    return bus->Ler(endereco);
+}
+
+void CPU::EscreverMemoria(uint16_t endereco, uint8_t valor) {
+    bus->Escrever(endereco, valor);
+}
+
+void CPU::Push(uint8_t valor) {
+    EscreverMemoria(0x0100 + SP, valor);
+    SP--;
+}
+
+uint8_t CPU::Pop() {
+    SP++;
+    return LerMemoria(0x0100 + SP);
+}
+
+================================================================================
+Arquivo: cpu.h
+Caminho relativo: cpu.h
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu.h
+================================================================================
+
+#pragma once
+#include <cstdint>
+#include <string>
+#include "bus.h"
+
+class CPU {
+private:
+    Bus* bus; // A CPU só aponta para o Bus agora
+
+public:
+    CPU(Bus* b); // Construtor atualizado
+
+    // --- REGISTRADORES DO HARDWARE ---
+    uint16_t PC;
+    uint8_t  SP;
+    uint8_t  A;
+    uint8_t  X;
+    uint8_t  Y;
+    uint8_t  Status;
+
+    // --- FUNÇÕES PÚBLICAS ---
+    void Reset();
+    void NMI();
+    bool vblank_ativo;
+    void GatilhoVBlank();
+    int ExecutarCiclo();
+    std::string DisassembleInstrucao(uint16_t& endereco);
+
+private:
+    // --- FUNÇÕES INTERNAS DE HARDWARE ---
+    void AtualizarFlagsZeroENegativo(uint8_t registrador);
+    void Push(uint8_t valor);
+    uint8_t Pop();
+
+    // --- BARRAMENTO DE MEMÓRIA (O Pedágio) ---
+    uint8_t LerMemoria(uint16_t endereco);
+    void EscreverMemoria(uint16_t endereco, uint8_t valor);
+
+    // --- MODOS DE ENDEREÇAMENTO ---
+    uint16_t ModoImediato();
+    uint16_t ModoAbsoluto();
+    uint16_t ModoAbsolutoX();
+    uint16_t ModoAbsolutoY();
+    uint16_t ModoRelativo();
+    uint16_t ModoZeroPage();
+    uint16_t ModoIndiretoY();
+    uint16_t ModoIndireto();
+    uint16_t ModoZeroPageX();
+
+    // --- INSTRUÇÕES DA CPU ---
+    void Instrucao_LDA(uint16_t endereco);
+    void Instrucao_LDX(uint16_t endereco);
+    void Instrucao_LDY(uint16_t endereco);
+    void Instrucao_STA(uint16_t endereco);
+    void Instrucao_STX(uint16_t endereco);
+    void Instrucao_STY(uint16_t endereco);
+    void Instrucao_JSR(uint16_t endereco);
+    void Instrucao_RTS();
+    void Instrucao_RTI();
+    void Instrucao_JMP(uint16_t endereco);
+    void Instrucao_PHA();
+    void Instrucao_PLA();
+    void Instrucao_SEC();
+    void Instrucao_CLC();
+    void Instrucao_ROR_A();
+
+    void Instrucao_DEX();
+    void Instrucao_DEY();
+    void Instrucao_CMP(uint16_t endereco);
+    void Instrucao_CPX(uint16_t endereco);
+    void Instrucao_CPY(uint16_t endereco);
+    void Instrucao_BIT(uint16_t endereco);
+    void Instrucao_LSR_Acumulador();
+    void Instrucao_ROL_Acumulador();
+    void Instrucao_ROR(uint16_t endereco);
+    void Instrucao_ASL_Acumulador();
+    void Instrucao_ASL(uint16_t endereco);
+    void Instrucao_INY(uint16_t endereco);
+    void Instrucao_INC(uint16_t endereco);
+    void Instrucao_DEC(uint16_t endereco);
+    void Instrucao_SBC(uint16_t endereco);
+    void Instrucao_ADC(uint16_t endereco);
+    void Instrucao_TAY();
+    void Instrucao_TYA();
+    void Instrucao_TAX();
+    void Instrucao_TXA();
+
+    void Instrucao_BPL(uint16_t endereco);
+    void Instrucao_BCS(uint16_t endereco);
+    void Instrucao_BCC(uint16_t endereco);
+    void Instrucao_BNE(uint16_t endereco);
+    void Instrucao_BEQ(uint16_t endereco);
+    void Instrucao_BMI(uint16_t endereco);
+    void Instrucao_ORA(uint16_t endereco);
+    void Instrucao_AND(uint16_t endereco);
+    void Instrucao_EOR(uint16_t endereco);
+    void Instrucao_ROL(uint16_t endereco);
+    void Instrucao_LSR(uint16_t endereco);
+};
+
+================================================================================
+Arquivo: cpu_debug.cpp
+Caminho relativo: cpu_debug.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu_debug.cpp
+================================================================================
+
+#include "cpu.h"
+#include <sstream>
+#include <iomanip>
+
+std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
+    uint8_t opcode = bus->Ler(endereco);
+    std::stringstream ss;
+
+    ss << "[" << std::setfill('0') << std::setw(4) << std::hex << std::uppercase << endereco << "] ";
+
+    switch (opcode) {
+        // --- 1 Byte ---
+        case 0x6A: ss << "6A       ROR A"; endereco += 1; break;
+        case 0x98: ss << "98       TYA"; endereco += 1; break;
+        case 0x40: ss << "40       RTI"; endereco += 1; break;
+        case 0xA8: ss << "A8       TAY"; endereco += 1; break;
+        case 0x0A: ss << "0A       ASL A"; endereco += 1; break;
+        case 0x18: ss << "18       CLC"; endereco += 1; break;
+        case 0x38: ss << "38       SEC"; endereco += 1; break;
+        case 0x2A: ss << "2A       ROL A"; endereco += 1; break;
+        case 0x68: ss << "68       PLA"; endereco += 1; break;
+        case 0x4A: ss << "4A       LSR A"; endereco += 1; break;
+        case 0xAA: ss << "AA       TAX"; endereco += 1; break;
+        case 0x8A: ss << "8A       TXA"; endereco += 1; break;
+        case 0x9A: ss << "9A       TXS"; endereco += 1; break;
+        case 0xE8: ss << "E8       INX"; endereco += 1; break;
+        case 0xCA: ss << "CA       DEX"; endereco += 1; break;
+        case 0xC8: ss << "C8       INY"; endereco += 1; break;
+        case 0x88: ss << "88       DEY"; endereco += 1; break;
+        case 0x78: ss << "78       SEI"; endereco += 1; break;
+        case 0xD8: ss << "D8       CLD"; endereco += 1; break;
+        case 0x60: ss << "60       RTS"; endereco += 1; break;
+        case 0x48: ss << "48       PHA"; endereco += 1; break;
+
+        // --- 2 Bytes ---
+        case 0x25:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "25 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       AND $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xE6:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "E6 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       INC $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xF5:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "F5 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       SBC $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0xD5:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "D5 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       CMP $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0x95:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "95 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       STA $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0xB5:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "B5 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       LDA $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0xC5:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "C5 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       CMP $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0x46:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "46 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       LSR $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0x26:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "26 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       ROL $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0x49:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "49 " << std::setfill('0') << std::setw(2) << (int)valor
+               << "    EOR #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xA4:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "A4 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       LDY $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0x24:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "24 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       BIT $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0x84:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "84 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       STY $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xE9:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "E9 " << std::setfill('0') << std::setw(2) << (int)valor
+               << "    SBC #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0x30:
+        {
+            int8_t deslocamento = (int8_t)bus->Ler(endereco + 1);
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "30 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BMI $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        case 0xA6:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "A6 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       LDX $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0x65:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "65 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       ADC $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xC6:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "C6 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       DEC $" << std::setw(2) << (int)zp;
+            endereco += 2; break;
+        }
+        case 0xA5:
+        {
+            uint8_t endereco_zp = bus->Ler(endereco + 1);
+            ss << "A5 " << std::setfill('0') << std::setw(2) << (int)endereco_zp
+               << "       LDA $" << std::setw(2) << (int)endereco_zp;
+            endereco += 2; break;
+        }
+        case 0x69:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "69 " << std::setfill('0') << std::setw(2) << (int)valor << "    ADC #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0x45:
+        {
+            uint8_t endereco_zp = bus->Ler(endereco + 1);
+            ss << "45 " << std::setfill('0') << std::setw(2) << (int)endereco_zp
+               << "       EOR $" << std::setw(2) << (int)endereco_zp;
+            endereco += 2; break;
+        }
+        case 0xF0:
+        {
+            int8_t deslocamento = (int8_t)bus->Ler(endereco + 1);
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "F0 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BEQ $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        case 0x05:
+        {
+            uint8_t endereco_zp = bus->Ler(endereco + 1);
+            ss << "05 " << std::setfill('0') << std::setw(2) << (int)endereco_zp
+               << "       ORA $" << std::setw(2) << (int)endereco_zp;
+            endereco += 2; break;
+        }
+        case 0xB1:
+        {
+            uint8_t ponteiro_zp = bus->Ler(endereco + 1);
+            ss << "B1 " << std::setfill('0') << std::setw(2) << (int)ponteiro_zp
+               << "    LDA ($" << std::setw(2) << (int)ponteiro_zp << "),Y";
+            endereco += 2; break;
+        }
+        case 0xA9:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "A9 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDA #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xA0:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "A0 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDY #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xA2:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "A2 " << std::setfill('0') << std::setw(2) << (int)valor << "    LDX #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xC9:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "C9 " << std::setfill('0') << std::setw(2) << (int)valor << "    CMP #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xE0:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "E0 " << std::setfill('0') << std::setw(2) << (int)valor << "    CPX #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0xC0:
+        {
+            uint8_t valor = bus->Ler(endereco + 1);
+            ss << "C0 " << std::setfill('0') << std::setw(2) << (int)valor << "    CPY #$" << (int)valor;
+            endereco += 2; break;
+        }
+        case 0x29:
+            ss << "29 " << std::setfill('0') << std::setw(2) << (int)bus->Ler(endereco + 1)
+               << "       AND #$" << std::setw(2) << (int)bus->Ler(endereco + 1);
+            endereco += 2; break;
+        case 0x10:
+        {
+            int8_t deslocamento = (int8_t)bus->Ler(endereco + 1);
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "10 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BPL $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        case 0xB0:
+        {
+            int8_t deslocamento = (int8_t)bus->Ler(endereco + 1);
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "B0 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BCS $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        case 0xD0:
+        {
+            int8_t deslocamento = (int8_t)bus->Ler(endereco + 1);
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "D0 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BNE $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+        case 0x85:
+        {
+            uint8_t endereco_zp = bus->Ler(endereco + 1);
+            ss << "85 " << std::setfill('0') << std::setw(2) << (int)endereco_zp
+               << "    STA $" << std::setw(2) << (int)endereco_zp;
+            endereco += 2; break;
+        }
+        case 0x86:
+        {
+            uint8_t endereco_zp = bus->Ler(endereco + 1);
+            ss << "86 " << std::setfill('0') << std::setw(2) << (int)endereco_zp
+               << "    STX $" << std::setw(2) << (int)endereco_zp;
+            endereco += 2; break;
+        }
+        case 0x91:
+        {
+            uint8_t ponteiro_zp = bus->Ler(endereco + 1);
+            ss << "91 " << std::setfill('0') << std::setw(2) << (int)ponteiro_zp
+               << "    STA ($" << std::setw(2) << (int)ponteiro_zp << "),Y";
+            endereco += 2; break;
+        }
+        case 0x09:
+            ss << "09 " << std::setfill('0') << std::setw(2) << (int)bus->Ler(endereco + 1)
+               << "       ORA #$" << std::setw(2) << (int)bus->Ler(endereco + 1);
+            endereco += 2; break;
+
+        case 0x90:
+        {
+            int8_t deslocamento = (int8_t)bus->Ler(endereco + 1);
+            uint16_t destino = endereco + 2 + deslocamento;
+            ss << "90 " << std::setfill('0') << std::setw(2) << (int)(uint8_t)deslocamento
+               << "    BCC $" << std::setfill('0') << std::setw(4) << destino;
+            endereco += 2; break;
+        }
+
+        // --- 3 Bytes ---
+        case 0x75:
+        {
+            uint8_t zp = bus->Ler(endereco + 1);
+            ss << "75 " << std::setfill('0') << std::setw(2) << (int)zp
+               << "       ADC $" << std::setw(2) << (int)zp << ",X";
+            endereco += 2; break;
+        }
+        case 0xDD:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "DD " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    CMP $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0x7D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "7D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ADC $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0x2D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "2D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    AND $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x0E:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "0E " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ASL $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x39:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "39 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    AND $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+        case 0x0D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "0D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ORA $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x2E:
+        {
+            uint8_t l = bus->Ler(endereco + 1);
+            uint8_t h = bus->Ler(endereco + 2);
+            ss << "2E " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ROL $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x4E:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "4E " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LSR $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xDE:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "DE " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    DEC $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0xBC:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "BC " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDY $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0xD9:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "D9 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    CMP $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+        case 0xCD:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "CD " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    CMP $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x79:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "79 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ADC $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+        case 0x8E:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "8E " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    STX $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x8C:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "8C " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    STY $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x6D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "6D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ADC $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xB9:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "B9 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+        case 0x6C:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "6C " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    JMP ($" << std::setw(2) << (int)h << std::setw(2) << (int)l << ")";
+            endereco += 3; break;
+        }
+        case 0x7E:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "7E " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    ROR $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0xCE:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "CE " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    DEC $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xED:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "ED " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    SBC $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xF9:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "F9 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    SBC $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+        case 0x3D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "3D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    AND $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0x9D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "9D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    STA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0xBE:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "BE " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDX $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+        case 0xAE:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "AE " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDX $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xAC:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "AC " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDY $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xEE:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "EE " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    INC $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x4C:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "4C " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    JMP $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xAD:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "AD " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDA $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0xBD:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "BD " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    LDA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",X";
+            endereco += 3; break;
+        }
+        case 0x8D:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "8D " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    STA $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x20:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "20 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    JSR $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x2C:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "2C " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    BIT $" << std::setw(2) << (int)h << std::setw(2) << (int)l;
+            endereco += 3; break;
+        }
+        case 0x99:
+        {
+            uint8_t l = bus->Ler(endereco + 1); uint8_t h = bus->Ler(endereco + 2);
+            ss << "99 " << std::setfill('0') << std::setw(2) << (int)l << " " << std::setw(2) << (int)h
+               << "    STA $" << std::setw(2) << (int)h << std::setw(2) << (int)l << ",Y";
+            endereco += 3; break;
+        }
+
+        default:
+            ss << std::setfill('0') << std::setw(2) << std::hex << (int)opcode << "       ??? (Nao Implementado)";
+            endereco += 1;
+            break;
+    }
+    return ss.str();
+}
+
+================================================================================
+Arquivo: cpu_instrucoes.cpp
+Caminho relativo: cpu_instrucoes.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu_instrucoes.cpp
+================================================================================
+
+#include "cpu.h"
+
+void CPU::AtualizarFlagsZeroENegativo(uint8_t registrador) {
+    if (registrador == 0x00) { Status |= 0x02; }
+    else                     { Status &= ~0x02; }
+
+    if (registrador & 0x80)  { Status |= 0x80; }
+    else                     { Status &= ~0x80; }
+}
+
+void CPU::Instrucao_LDA(uint16_t endereco) {
+    A = LerMemoria(endereco);
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_LDX(uint16_t endereco) {
+    X = LerMemoria(endereco);
+    AtualizarFlagsZeroENegativo(X);
+}
+
+void CPU::Instrucao_ROR_A() {
+    uint8_t carry_antigo = (Status & 0x01); // Salva o Carry atual
+    uint8_t bit0 = (A & 0x01);             // Salva o bit 0 (que será o novo Carry)
+
+    // Faz a rotação
+    A = (A >> 1);
+    if (carry_antigo) A |= 0x80; // Põe o carry antigo no bit 7
+
+    // Atualiza o Carry com o bit 0 antigo
+    if (bit0) Status |= 0x01; else Status &= ~0x01;
+
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_LDY(uint16_t endereco) {
+    Y = LerMemoria(endereco);
+    AtualizarFlagsZeroENegativo(Y);
+}
+
+void CPU::Instrucao_STA(uint16_t endereco) {
+    EscreverMemoria(endereco, A);
+}
+
+void CPU::Instrucao_STX(uint16_t endereco) {
+    EscreverMemoria(endereco, X);
+}
+
+void CPU::Instrucao_JMP(uint16_t endereco) {
+    PC = endereco;
+}
+
+void CPU::Instrucao_BPL(uint16_t endereco) {
+    if ((Status & 0x80) == 0) { PC = endereco; }
+}
+
+void CPU::Instrucao_BCS(uint16_t endereco) {
+    if ((Status & 0x01) == 1) { PC = endereco; }
+}
+
+void CPU::Instrucao_BNE(uint16_t endereco) {
+    if ((Status & 0x02) == 0) { PC = endereco; }
+}
+
+void CPU::Instrucao_CMP(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    uint8_t resultado = A - valor;
+
+    if (A >= valor) { Status |= 0x01; }
+    else            { Status &= ~0x01; }
+
+    AtualizarFlagsZeroENegativo(resultado);
+}
+
+void CPU::Instrucao_CPX(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    uint8_t resultado = X - valor;
+
+    if (X >= valor) { Status |= 0x01; }
+    else            { Status &= ~0x01; }
+
+    AtualizarFlagsZeroENegativo(resultado);
+}
+
+void CPU::Instrucao_CPY(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    uint8_t resultado = Y - valor;
+
+    if (Y >= valor) { Status |= 0x01; }
+    else            { Status &= ~0x01; }
+
+    AtualizarFlagsZeroENegativo(resultado);
+}
+
+void CPU::Instrucao_PHA() {
+    Push(A); // Salva o A na pilha mágica
+}
+
+void CPU::Instrucao_PLA() {
+    A = Pop(); // Resgata o valor do topo da pilha e joga no A
+    AtualizarFlagsZeroENegativo(A); // Informa o painel de Status sobre o novo valor
+}
+
+void CPU::Instrucao_SBC(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+
+    // O 6502 transforma a subtração numa soma invertendo os bits do valor
+    uint16_t valor_invertido = valor ^ 0xFF;
+    uint8_t carry = Status & 0x01; // Pega o bit de Carry atual
+
+    // Fazemos a soma: Acumulador + Valor Invertido + Carry
+    uint16_t resultado = A + valor_invertido + carry;
+
+    // 1. Atualiza o Carry (Se a soma passou de 255, a subtração deu certo)
+    if (resultado > 255) { Status |= 0x01; }
+    else                 { Status &= ~0x01; }
+
+    // 2. Atualiza a Flag de Overflow (V) - Bit 6 do Status
+    // A matemática maluca do 6502: se os sinais inverteram errado, liga o Overflow.
+    if (~(A ^ valor_invertido) & (A ^ resultado) & 0x80) {
+        Status |= 0x40; // Liga Overflow
+    } else {
+        Status &= ~0x40; // Desliga Overflow
+    }
+
+    // 3. Salva no Acumulador e atualiza Zero e Negativo
+    A = (uint8_t)resultado;
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_BCC(uint16_t endereco) {
+    // Se a Flag de Carry (Bit 0) estiver APAGADA (0), faz o pulo!
+    if ((Status & 0x01) == 0) {
+        PC = endereco;
+    }
+}
+
+void CPU::Instrucao_DEC(uint16_t endereco) {
+    // 1. Lê o valor atual da gaveta de memória
+    uint8_t valor = LerMemoria(endereco);
+
+    // 2. Subtrai 1 (Decrementa)
+    valor--;
+
+    // 3. Guarda o valor atualizado de volta na mesma gaveta
+    EscreverMemoria(endereco, valor);
+
+    // 4. E não podemos esquecer: as Flags reagem ao resultado!
+    AtualizarFlagsZeroENegativo(valor);
+}
+
+void CPU::Instrucao_INC(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    valor++;
+    EscreverMemoria(endereco, valor);
+    AtualizarFlagsZeroENegativo(valor);
+}
+
+void CPU::Instrucao_BEQ(uint16_t endereco) {
+    // Se a Flag Zero (Bit 1) estiver ACESA (1), fazemos o pulo!
+    if ((Status & 0x02) != 0) {
+        PC = endereco;
+    }
+}
+
+void CPU::Instrucao_SEC() {
+    Status |= 0x01; // Força o Bit 0 (Carry) a virar 1
+}
+
+void CPU::Instrucao_BIT(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+
+    uint8_t resultado_and = A & valor;
+    if (resultado_and == 0) { Status |= 0x02;  }
+    else                    { Status &= ~0x02; }
+
+    if (valor & 0x80) { Status |= 0x80;  }
+    else              { Status &= ~0x80; }
+
+    if (valor & 0x40) { Status |= 0x40;  }
+    else              { Status &= ~0x40; }
+}
+
+void CPU::Instrucao_EOR(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+
+    // Aplica o XOR (Ou Exclusivo) entre o Acumulador e o Valor
+    A = A ^ valor;
+
+    // Atualiza as Flags de Status
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_CLC() {
+    Status &= ~0x01; // Força o Bit 0 (Carry) a apagar para 0
+}
+
+void CPU::Instrucao_ROR(uint16_t endereco) {
+    // 1. Lê o valor da memória
+    uint8_t valor = LerMemoria(endereco);
+
+    // 2. Guarda o Carry antigo (se ele é 1, vai virar 128 (0x80) pra entrar no Bit 7)
+    uint8_t carry_antigo = (Status & 0x01) ? 0x80 : 0x00;
+
+    // 3. O Bit 0 atual vai ser o nosso novo Carry
+    if (valor & 0x01) { Status |= 0x01;  } // Liga o Carry
+    else              { Status &= ~0x01; } // Desliga o Carry
+
+    // 4. Empurra todos os bits para a direita
+    valor = valor >> 1;
+
+    // 5. Preenche o Bit 7 com o Carry antigo
+    valor = valor | carry_antigo;
+
+    // 6. Escreve de volta na memória
+    EscreverMemoria(endereco, valor);
+
+    // 7. Atualiza o painel de Status
+    AtualizarFlagsZeroENegativo(valor);
+}
+
+void CPU::Instrucao_ASL_Acumulador() {
+    // 1. Salva o Bit 7 atual na Flag de Carry
+    if (A & 0x80) { Status |= 0x01;  } // Se Bit 7 for 1, liga o Carry
+    else          { Status &= ~0x01; } // Se for 0, desliga o Carry
+
+    // 2. Empurra os bits para a Esquerda
+    A = A << 1;
+
+    // 3. Atualiza as Flags Zero e Negativo com o novo valor
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_TAY() {
+    Y = A; // Copia o valor do Acumulador para o Y
+    AtualizarFlagsZeroENegativo(Y); // O painel de Status precisa saber o que entrou no Y!
+}
+
+void CPU::Instrucao_TAX() {
+    X = A;
+    AtualizarFlagsZeroENegativo(X);
+}
+
+void CPU::Instrucao_TXA() {
+    A = X;
+    AtualizarFlagsZeroENegativo(A);
+}
+
+uint16_t CPU::ModoIndireto() {
+    // 1. O PC aponta para a gaveta (2 bytes) que guarda o ponteiro
+    uint8_t ponteiro_baixo = LerMemoria(PC);
+    uint8_t ponteiro_alto = LerMemoria(PC + 1);
+    PC += 2; // Avançamos o PC normalmente
+
+    // 2. Juntamos o endereço do ponteiro
+    uint16_t ponteiro = (ponteiro_alto << 8) | ponteiro_baixo;
+
+    uint8_t byte_baixo = LerMemoria(ponteiro);
+    uint8_t byte_alto;
+
+    // 3. RECRIANDO O BUG DO HARDWARE DO 6502:
+    // Se o ponteiro bater no limite de uma página (ex: 0x02FF)
+    if (ponteiro_baixo == 0xFF) {
+        // Ele "dá a volta" na mesma página em vez de ir pra próxima (lê 0x0200)
+        byte_alto = LerMemoria(ponteiro & 0xFF00);
+    } else {
+        // Comportamento normal, vai pra próxima casinha (0x02FF + 1 = 0x0300)
+        byte_alto = LerMemoria(ponteiro + 1);
+    }
+
+    // 4. Retorna o endereço real escondido lá dentro
+    return (byte_alto << 8) | byte_baixo;
+}
+
+void CPU::Instrucao_ADC(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    uint8_t carry = Status & 0x01;
+
+    // A soma oficial: Acumulador + Valor + Carry
+    uint16_t resultado = A + valor + carry;
+
+    // 1. Atualiza o Carry (se passar de 255, a flag liga)
+    if (resultado > 255) { Status |= 0x01; }
+    else                 { Status &= ~0x01; }
+
+    // 2. Atualiza o Overflow (V)
+    // O sinal inverte se somarmos dois números iguais e o resultado for diferente
+    if (!((A ^ valor) & 0x80) && ((A ^ resultado) & 0x80)) {
+        Status |= 0x40;
+    } else {
+        Status &= ~0x40;
+    }
+
+    // 3. Salva e atualiza Z e N
+    A = (uint8_t)resultado;
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_STY(uint16_t endereco) {
+    EscreverMemoria(endereco, Y); // Pega o Y e guarda na gaveta!
+}
+
+void CPU::Instrucao_RTI() {
+    // 1. Resgata o painel de Status inteiro que estava salvo na pilha
+    Status = Pop();
+    Status |= 0x20; // O Bit 5 no NES não existe fisicamente, mas a CPU lê sempre como 1
+
+    // 2. Resgata o endereço de onde paramos (Primeiro o baixo, depois o alto)
+    uint8_t byte_baixo = Pop();
+    uint8_t byte_alto = Pop();
+
+    // 3. Monta o endereço original e joga no Program Counter
+    PC = (byte_alto << 8) | byte_baixo;
+}
+
+void CPU::Instrucao_TYA() {
+    A = Y; // Copia Y para A
+    AtualizarFlagsZeroENegativo(A); // Atualiza o status
+}
+
+void CPU::Instrucao_BMI(uint16_t endereco) {
+    // Se a Flag de Negativo (Bit 7 - 0x80) estiver ACESA (1), fazemos o pulo!
+    if ((Status & 0x80) != 0) {
+        PC = endereco;
+    }
+}
+
+void CPU::Instrucao_ROL(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+    uint8_t carry_antigo = Status & 0x01;
+    uint8_t bit7 = (valor & 0x80) >> 7;
+
+    valor = (valor << 1) | carry_antigo;
+
+    // Atualiza Carry
+    if (bit7) Status |= 0x01; else Status &= ~0x01;
+
+    EscreverMemoria(endereco, valor);
+    AtualizarFlagsZeroENegativo(valor);
+}
+
+void CPU::Instrucao_LSR(uint16_t endereco) {
+    uint8_t valor = LerMemoria(endereco);
+
+    // O bit 0 vai para o Carry
+    if (valor & 0x01) Status |= 0x01; // Carry = 1
+    else Status &= ~0x01;            // Carry = 0
+
+    valor >>= 1; // Shift para a direita
+
+    EscreverMemoria(endereco, valor);
+    AtualizarFlagsZeroENegativo(valor); // Flag Zero e Negativo
+}
+
+void CPU::Instrucao_LSR_Acumulador() {
+    // 1. Salva o bit 0 na Flag de Carry (Status Bit 0)
+    if (A & 0x01) { Status |= 0x01;  } // Liga o Carry se o bit for 1
+    else          { Status &= ~0x01; } // Desliga o Carry se for 0
+
+    // 2. Empurra os bits para a direita (o bit 7 automaticamente vira 0 em C++)
+    A = A >> 1;
+
+    // 3. O Zero Page Flags (Z e N) reagem ao resultado novo
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_ROL_Acumulador() {
+    // 1. Salva o Carry Antigo para colocarmos no Bit 0 depois
+    uint8_t carry_antigo = (Status & 0x01) ? 1 : 0;
+
+    // 2. O Bit 7 atual vai ser a nossa nova Flag de Carry (C)
+    if (A & 0x80) { Status |= 0x01;  } // Se Bit 7 for 1, liga a flag
+    else          { Status &= ~0x01; } // Se for 0, desliga
+
+    // 3. Empurra todos os bits para a esquerda
+    A = A << 1;
+
+    // 4. Coloca o Carry Antigo no Bit 0 vazio
+    A = A | carry_antigo;
+
+    // 5. Atualiza o painel de Status com as flags Z e N
+    AtualizarFlagsZeroENegativo(A);
+}
+
+void CPU::Instrucao_AND(uint16_t endereco) {
+    A = A & LerMemoria(endereco);
+
+    if (A == 0) { Status |= 0x02;  }
+    else        { Status &= ~0x02; }
+
+    if (A & 0x80) { Status |= 0x80;  }
+    else          { Status &= ~0x80; }
+}
+
+void CPU::Instrucao_ORA(uint16_t endereco) {
+    A = A | LerMemoria(endereco);
+
+    if (A == 0) { Status |= 0x02;  }
+    else        { Status &= ~0x02; }
+
+    if (A & 0x80) { Status |= 0x80;  }
+    else          { Status &= ~0x80; }
+}
+
+void CPU::Instrucao_DEX() {
+    X = X - 1;
+    AtualizarFlagsZeroENegativo(X);
+}
+
+void CPU::Instrucao_DEY() {
+    Y = Y - 1;
+    AtualizarFlagsZeroENegativo(Y);
+}
+
+void CPU::Instrucao_INY(uint16_t endereco) {
+    Y++;
+    if (Y == 0) { Status |= 0x02;  }
+    else        { Status &= ~0x02; }
+
+    if (Y & 0x80) { Status |= 0x80;  }
+    else          { Status &= ~0x80; }
+}
+
+void CPU::Instrucao_JSR(uint16_t endereco) {
+    uint16_t endereco_retorno = PC - 1;
+    Push((endereco_retorno >> 8) & 0xFF);
+    Push(endereco_retorno & 0xFF);
+    PC = endereco;
+}
+
+void CPU::Instrucao_RTS() {
+    uint8_t byte_baixo = Pop();
+    uint8_t byte_alto = Pop();
+    uint16_t endereco_retorno = (byte_alto << 8) | byte_baixo;
+    PC = endereco_retorno + 1;
+}
+
+void CPU::Instrucao_ASL(uint16_t endereco) {
+    // 1. Lê o valor da memória
+    uint8_t valor = LerMemoria(endereco);
+
+    // 2. O Bit 7 (o mais à esquerda) vai cair fora e precisa ir para o Carry
+    if (valor & 0x80) { Status |= 0x01;  } // Liga o Carry
+    else              { Status &= ~0x01; } // Desliga o Carry
+
+    // 3. Empurra todos os bits para a Esquerda
+    valor = valor << 1;
+
+    // 4. Salva de volta na memória e atualiza as flags Z e N
+    EscreverMemoria(endereco, valor);
+    AtualizarFlagsZeroENegativo(valor);
+}
+
+================================================================================
+Arquivo: cpu_modos.cpp
+Caminho relativo: cpu_modos.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\cpu_modos.cpp
+================================================================================
+
+#include "cpu.h"
+
+uint16_t CPU::ModoImediato() {
+    uint16_t endereco = PC;
+    PC++;
+    return endereco;
+}
+
+uint16_t CPU::ModoAbsoluto() {
+    uint8_t byte_baixo = LerMemoria(PC);
+    uint8_t byte_alto = LerMemoria(PC + 1);
+    PC += 2;
+    return (byte_alto << 8) | byte_baixo;
+}
+
+uint16_t CPU::ModoAbsolutoX() {
+    uint8_t byte_baixo = LerMemoria(PC);
+    uint8_t byte_alto = LerMemoria(PC + 1);
+    PC += 2;
+    return ((byte_alto << 8) | byte_baixo) + X;
+}
+
+uint16_t CPU::ModoAbsolutoY() {
+    uint8_t byte_baixo = LerMemoria(PC);
+    uint8_t byte_alto = LerMemoria(PC + 1);
+    PC += 2;
+    uint16_t endereco_base = (byte_alto << 8) | byte_baixo;
+    return endereco_base + Y;
+}
+
+uint16_t CPU::ModoZeroPageX() {
+    // Lê o endereço base, soma o X e usa a máscara & 0xFF para garantir
+    // que, se passar de 255, ele "dê a volta" dentro da Zero Page.
+    uint16_t endereco = (LerMemoria(PC) + X) & 0x00FF;
+    PC++;
+    return endereco;
+}
+
+uint16_t CPU::ModoRelativo() {
+    int8_t deslocamento = (int8_t)LerMemoria(PC);
+    PC++;
+    return PC + deslocamento;
+}
+
+uint16_t CPU::ModoZeroPage() {
+    uint16_t endereco = LerMemoria(PC);
+    PC++;
+    return endereco;
+}
+
+uint16_t CPU::ModoIndiretoY() {
+    uint8_t ponteiro_zp = LerMemoria(PC);
+    PC++;
+
+    uint8_t byte_baixo = LerMemoria(ponteiro_zp);
+    uint8_t byte_alto = LerMemoria((uint8_t)(ponteiro_zp + 1));
+
+    uint16_t endereco_base = (byte_alto << 8) | byte_baixo;
+    return endereco_base + Y;
+}
+
+================================================================================
+Arquivo: main.cpp
+Caminho relativo: main.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\main.cpp
+================================================================================
+
+#include "cpu.h"
+#include "bus.h"
+#include
+#include
+#include  // O Cabeçalho mágico da nossa TV!
+
+int main(int argc, char* argv[]) {
+    // --- 1. INICIALIZAÇÃO DA SDL2 ---
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        std::cout << "ERRO SDL: " << SDL_GetError() << "\n";
+        return 1;
+    }
+
+    // Cria a Janela (Tamanho original do NES é 256x240, multiplicamos por 3 para ficar visível)
+    SDL_Window* janela = SDL_CreateWindow("Meu Emulador de NES - Projeto Sentinela",
+                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                          256 * 3, 240 * 3, 0);
+
+    // Cria o Renderizador (A Placa de Vídeo acelerada por Hardware)
+    SDL_Renderer* renderizador = SDL_CreateRenderer(janela, -1, SDL_RENDERER_ACCELERATED);
+
+    // Pinta a tela de preto para começar
+    SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
+    SDL_RenderClear(renderizador);
+    SDL_RenderPresent(renderizador);
+
+
+    // --- 2. INICIALIZAÇÃO DO HARDWARE (Nosso Emulador) ---
+    Bus barramento;
+    CPU minhaCpu(&barramento);
+
+    std::ifstream arquivo("mario.nes", std::ios::binary);
+    if (!arquivo) {
+        std::cout << "ERRO: Nao foi possivel abrir o arquivo mario.nes!\n";
+        return 1;
+    }
+
+    arquivo.seekg(16, std::ios::beg);
+    arquivo.read(reinterpret_cast(barramento.cartucho), 32768);
+    std::cout << "[Cartucho] Jogo carregado na memoria com sucesso!\n";
+
+    minhaCpu.Reset();
+    int ciclos = 0;
+    bool rodando = true;
+    SDL_Event evento;
+
+    std::cout << "--- INICIANDO O EMULADOR NES ---\n";
+
+    // --- 3. O LOOP PRINCIPAL DO CONSOLE ---
+    while (rodando) {
+        // Escuta os eventos do Windows (Ex: Clicar no X para fechar a janela)
+        while (SDL_PollEvent(&evento)) {
+            if (evento.type == SDL_QUIT) {
+                rodando = false;
+            }
+        }
+
+        // A CPU corre!
+        int ciclos_instrucao = minhaCpu.ExecutarCiclo();
+        ciclos += ciclos_instrucao;
+
+        // O VBlank acontece
+        if (ciclos >= 29780) {
+            barramento.ppu.nmi_ocorreu = true;
+
+            if (barramento.ppu.ppu_ctrl & 0x80) {
+                minhaCpu.NMI();
+            }
+
+            ciclos -= 29780;
+        }
+    }
+
+    // --- 4. DESLIGANDO A TV ---
+    SDL_DestroyRenderer(renderizador);
+    SDL_DestroyWindow(janela);
+    SDL_Quit();
+
+    return 0;
+}
+
+================================================================================
+Arquivo: ppu.cpp
+Caminho relativo: ppu.cpp
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\ppu.cpp
+================================================================================
+
+#include "ppu.h"
+
+PPU::PPU() {
+    nmi_ocorreu = false;
+    ppu_ctrl = 0;
+    vram_addr = 0; // ADICIONE ISSO
+    latch = false; // ADICIONE ISSO
+    for (int i = 0; i < 2048; i++) vram[i] = 0;
+    for (int i = 0; i < 32; i++) paleta[i] = 0;
+    for (int i = 0; i < 256; i++) oam[i] = 0;
+}
+
+uint8_t PPU::LerRegistrador(uint16_t endereco) {
+    // ... (Seu código do LerRegistrador continua EXATAMENTE igual) ...
+    uint8_t dado = 0x00;
+
+    switch (endereco) {
+        case 0x2002: // PPUSTATUS
+            if (nmi_ocorreu) dado |= 0x80;
+
+            static bool sprite0_hit = false;
+            sprite0_hit = !sprite0_hit;
+            if (sprite0_hit) dado |= 0x40;
+
+            nmi_ocorreu = false;
+            latch = false; // <-- ADICIONE ISSO! LER O $2002 DESTRAVA O LATCH!
+            break;
+    }
+    return dado;
+}
+
+void PPU::EscreverRegistrador(uint16_t endereco, uint8_t valor) {
+    switch (endereco) {
+        case 0x2000: // PPUCTRL
+            ppu_ctrl = valor;
+            break;
+        case 0x2006: // PPUADDR
+            if (latch == false) {
+                // Primeira escrita: Pega o byte ALTO. Limpa os bits altos antigos e injeta os novos.
+                vram_addr = (uint16_t)((valor & 0x3F) << 8) | (vram_addr & 0x00FF);
+                latch = true; // Muda a trava para a próxima escrita
+            } else {
+                // Segunda escrita: Pega o byte BAIXO. Limpa os bits baixos antigos e injeta os novos.
+                vram_addr = (vram_addr & 0xFF00) | valor;
+                latch = false; // Destrava
+            }
+            break;
+        case 0x2007: // PPUDATA
+            // Salva o dado na VRAM usando o endereço que foi montado no $2006!
+            // O '& 0x07FF' mantém o acesso dentro do tamanho real da nossa VRAM (2KB)
+            vram[vram_addr & 0x07FF] = valor;
+
+            // Magia do NES: A PPU avança o endereço sozinha após cada escrita!
+            // (Por padrão avança +1, mas pode avançar +32 dependendo do PPUCTRL)
+            if (ppu_ctrl & 0x04) vram_addr += 32;
+            else                 vram_addr += 1;
+            break;
+    }
+}
+
+================================================================================
+Arquivo: ppu.h
+Caminho relativo: ppu.h
+Caminho completo: C:\Users\Bruno\Documents\Programação\EmuladorNES\MOS6502-Emulaador\ppu.h
+================================================================================
+
+#pragma once
+#include <cstdint>
+
+class PPU {
+public:
+    PPU();
+
+    uint8_t vram[2048];
+    uint8_t paleta[32];
+    uint8_t oam[256];
+
+    uint8_t LerRegistrador(uint16_t endereco);
+    void EscreverRegistrador(uint16_t endereco, uint8_t valor);
+
+    bool nmi_ocorreu;
+    uint8_t ppu_ctrl; // NOVO: Guarda as configurações enviadas pelo Mario
+
+    uint16_t vram_addr; // O endereço de 16 bits que a CPU montar
+    bool latch;         // 0 = Esperando byte Alto, 1 = Esperando byte Baixo
+};
+

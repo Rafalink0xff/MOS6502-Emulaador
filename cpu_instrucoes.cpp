@@ -18,6 +18,20 @@ void CPU::Instrucao_LDX(uint16_t endereco) {
     AtualizarFlagsZeroENegativo(X);
 }
 
+void CPU::Instrucao_ROR_A() {
+    uint8_t carry_antigo = (Status & 0x01); // Salva o Carry atual
+    uint8_t bit0 = (A & 0x01);             // Salva o bit 0 (que será o novo Carry)
+
+    // Faz a rotação
+    A = (A >> 1);
+    if (carry_antigo) A |= 0x80; // Põe o carry antigo no bit 7
+
+    // Atualiza o Carry com o bit 0 antigo
+    if (bit0) Status |= 0x01; else Status &= ~0x01;
+
+    AtualizarFlagsZeroENegativo(A);
+}
+
 void CPU::Instrucao_LDY(uint16_t endereco) {
     Y = LerMemoria(endereco);
     AtualizarFlagsZeroENegativo(Y);
@@ -418,4 +432,20 @@ void CPU::Instrucao_RTS() {
     uint8_t byte_alto = Pop();
     uint16_t endereco_retorno = (byte_alto << 8) | byte_baixo;
     PC = endereco_retorno + 1;
+}
+
+void CPU::Instrucao_ASL(uint16_t endereco) {
+    // 1. Lê o valor da memória
+    uint8_t valor = LerMemoria(endereco);
+
+    // 2. O Bit 7 (o mais à esquerda) vai cair fora e precisa ir para o Carry
+    if (valor & 0x80) { Status |= 0x01;  } // Liga o Carry
+    else              { Status &= ~0x01; } // Desliga o Carry
+
+    // 3. Empurra todos os bits para a Esquerda
+    valor = valor << 1;
+
+    // 4. Salva de volta na memória e atualiza as flags Z e N
+    EscreverMemoria(endereco, valor);
+    AtualizarFlagsZeroENegativo(valor);
 }

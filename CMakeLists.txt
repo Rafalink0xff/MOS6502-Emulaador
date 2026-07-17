@@ -1,25 +1,34 @@
 cmake_minimum_required(VERSION 3.20)
 project(EmuladorNES CXX)
 
-# Força o CLion a usar o padrão estável moderno do C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Informa ao CMake todos os nossos novos módulos separados
+# --- CONFIGURAÇÃO MANUAL DA SDL2 ---
+# Ajuste este caminho se o seu MSYS2 não estiver em C:/msys64
+set(SDL2_ROOT "C:/msys64/mingw64")
+
+include_directories(${SDL2_ROOT}/include)
+link_directories(${SDL2_ROOT}/lib)
+
 add_executable(EmuladorNES
         main.cpp
         cpu.cpp
         cpu_modos.cpp
         cpu_instrucoes.cpp
         cpu_debug.cpp
-        cpu.h
+        bus.cpp
+        ppu.cpp
+        ppu.h
 )
 
-# FORÇA O WINDOWS A USAR O MODO CONSOLE (Resolve o erro do WinMain)
-if(WIN32)
-    # Adicionamos -municode e garantimos que o entry point seja o main
-    set_target_properties(EmuladorNES PROPERTIES LINK_FLAGS "-mconsole -Wl,--subsystem,console")
-endif()
+# Linka a SDL2 e a biblioteca de threads que ela precisa
+target_link_libraries(EmuladorNES SDL2 SDL2main)
 
-# Garante que o executável consiga achar arquivos na mesma pasta
-target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(WIN32)
+    # Garante que abra o console + a janela gráfica
+    set_target_properties(EmuladorNES PROPERTIES
+            LINK_FLAGS "-mconsole -Wl,--subsystem,console"
+    )
+
+    target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -28,6 +28,14 @@ uint16_t CPU::ModoAbsolutoY() {
     return endereco_base + Y;
 }
 
+uint16_t CPU::ModoZeroPageX() {
+    // Lê o endereço base, soma o X e usa a máscara & 0xFF para garantir
+    // que, se passar de 255, ele "dê a volta" dentro da Zero Page.
+    uint16_t endereco = (LerMemoria(PC) + X) & 0x00FF;
+    PC++;
+    return endereco;
+}
+
 uint16_t CPU::ModoRelativo() {
     int8_t deslocamento = (int8_t)LerMemoria(PC);
     PC++;

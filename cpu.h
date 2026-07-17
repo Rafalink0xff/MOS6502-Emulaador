@@ -1,9 +1,15 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include "bus.h"
 
 class CPU {
+private:
+    Bus* bus; // A CPU só aponta para o Bus agora
+
 public:
+    CPU(Bus* b); // Construtor atualizado
+
     // --- REGISTRADORES DO HARDWARE ---
     uint16_t PC;
     uint8_t  SP;
@@ -12,14 +18,12 @@ public:
     uint8_t  Y;
     uint8_t  Status;
 
-    // --- A MEMÓRIA RAM VIRTUAL ---
-    uint8_t memoria[65536];
-
     // --- FUNÇÕES PÚBLICAS ---
-    CPU();
     void Reset();
     void NMI();
-    void ExecutarCiclo();
+    bool vblank_ativo;
+    void GatilhoVBlank();
+    int ExecutarCiclo();
     std::string DisassembleInstrucao(uint16_t& endereco);
 
 private:
@@ -41,9 +45,9 @@ private:
     uint16_t ModoZeroPage();
     uint16_t ModoIndiretoY();
     uint16_t ModoIndireto();
+    uint16_t ModoZeroPageX();
 
     // --- INSTRUÇÕES DA CPU ---
-    // Load / Store (Memória)
     void Instrucao_LDA(uint16_t endereco);
     void Instrucao_LDX(uint16_t endereco);
     void Instrucao_LDY(uint16_t endereco);
@@ -58,8 +62,8 @@ private:
     void Instrucao_PLA();
     void Instrucao_SEC();
     void Instrucao_CLC();
+    void Instrucao_ROR_A();
 
-    // Matemática e Registradores
     void Instrucao_DEX();
     void Instrucao_DEY();
     void Instrucao_CMP(uint16_t endereco);
@@ -70,6 +74,7 @@ private:
     void Instrucao_ROL_Acumulador();
     void Instrucao_ROR(uint16_t endereco);
     void Instrucao_ASL_Acumulador();
+    void Instrucao_ASL(uint16_t endereco);
     void Instrucao_INY(uint16_t endereco);
     void Instrucao_INC(uint16_t endereco);
     void Instrucao_DEC(uint16_t endereco);
@@ -80,7 +85,6 @@ private:
     void Instrucao_TAX();
     void Instrucao_TXA();
 
-    // Desvios Condicionais (Branches)
     void Instrucao_BPL(uint16_t endereco);
     void Instrucao_BCS(uint16_t endereco);
     void Instrucao_BCC(uint16_t endereco);
@@ -88,7 +92,7 @@ private:
     void Instrucao_BEQ(uint16_t endereco);
     void Instrucao_BMI(uint16_t endereco);
     void Instrucao_ORA(uint16_t endereco);
-    void Instrucao_AND(uint16_t endereco); // Filtro AND
+    void Instrucao_AND(uint16_t endereco);
     void Instrucao_EOR(uint16_t endereco);
     void Instrucao_ROL(uint16_t endereco);
     void Instrucao_LSR(uint16_t endereco);
