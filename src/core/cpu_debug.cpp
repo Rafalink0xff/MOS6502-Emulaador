@@ -1,8 +1,8 @@
 #include "cpu.h"
 #include <sstream>
 #include <iomanip>
-#include <deque>
 #include <iostream>
+#include <fstream>
 
 std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
     uint8_t opcode = bus->Ler(endereco);
@@ -595,25 +595,26 @@ std::string CPU::DisassembleInstrucao(uint16_t& endereco) {
 }
 
 void CPU::SalvarLogCircular() {
-    // Formata uma string rápida com o estado atual: "PC: C000 | A:00 X:00 Y:00 P:24 SP:FD"
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "PC:%04X  |  A:%02X  X:%02X  Y:%02X  P:%02X  SP:%02X",
              PC, A, X, Y, Status, SP);
 
-    historico_log.push_back(buffer);
-
-    // Mantém apenas as últimas 50 instruções na memória para não gastar RAM infinita
-    if (historico_log.size() > 50) {
-        historico_log.pop_front();
-    }
+    historico_log[log_index] = buffer;
+    log_index = (log_index + 1) % 50;
 }
 
 void CPU::ImprimirHistoricoCrash() {
-    std::cout << "\n=======================================================\n";
-    std::cout << "    CAIXA PRETA DA CPU (Ultimas 50 instrucoes)\n";
-    std::cout << "=======================================================\n";
-    for (const auto& linha : historico_log) {
-        std::cout << linha << "\n";
+    std::ofstream arquivo("crash_log.txt");
+    if (arquivo.is_open()) {
+        arquivo << "CRASH LOG - Ultimas 50 instrucoes\n";
+        for (int i = 0; i < 50; i++) {
+            int pos = (log_index + i) % 50;
+            if (!historico_log[pos].empty()) {
+                arquivo << historico_log[pos] << "\n";
+            }
+        }
+        arquivo.flush();
+        arquivo.close();
+        std::cerr << "Log salvo em crash_log.txt na pasta do projeto!\n";
     }
-    std::cout << "=======================================================\n";
 }

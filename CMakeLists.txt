@@ -5,33 +5,54 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # --- CONFIGURAÇÃO DA SDL2 ---
-# Verifica se a pasta existe, senão avisa o erro de forma clara
 set(SDL2_PATH "C:/msys64/mingw64")
 
 if(NOT EXISTS "${SDL2_PATH}/include/SDL2")
     message(FATAL_ERROR "Nao encontrei a SDL2 em ${SDL2_PATH}. Verifique o caminho!")
 endif()
 
+# CORREÇÃO: Ensinando o compilador a olhar dentro da subpasta SDL2 para o ImGui achar o <SDL.h>
 include_directories("${SDL2_PATH}/include")
+include_directories("${SDL2_PATH}/include/SDL2")
 link_directories("${SDL2_PATH}/lib")
 
-# Lista de arquivos
-add_executable(EmuladorNES
-        main.cpp
-        cpu.cpp
-        cpu_modos.cpp
-        cpu_instrucoes.cpp
-        cpu_debug.cpp
-        bus.cpp
-        ppu.cpp
-        ppu.h
+# --- INCLUDES (Onde buscar os arquivos .h) ---
+include_directories(src/core)
+include_directories(src/frontend)
+include_directories(vendor/imgui)
+
+# --- FONTES DO PROJETO ---
+# 1. Arquivos do ImGui
+file(GLOB IMGUI_SOURCES "vendor/imgui/*.cpp")
+
+# 2. Arquivos do Core (O Cérebro)
+set(CORE_SOURCES
+        src/core/bus.cpp
+        src/core/cpu.cpp
+        src/core/cpu_instrucoes.cpp
+        src/core/cpu_modos.cpp
+        src/core/cpu_debug.cpp
+        src/core/ppu.cpp
+        src/core/apu.h
+        src/core/apu.cpp
 )
 
-# Linkagem
+# 3. Arquivos do Frontend (A Interface)
+set(FRONTEND_SOURCES
+        src/frontend/main.cpp
+        src/frontend/gui.cpp
+)
+
+# --- EXECUTÁVEL ---
+add_executable(EmuladorNES
+        ${CORE_SOURCES}
+        ${FRONTEND_SOURCES}
+        ${IMGUI_SOURCES}
+)
+
+# --- LINKAGEM ---
 target_link_libraries(EmuladorNES SDL2 SDL2main)
 
 if(WIN32)
     set_target_properties(EmuladorNES PROPERTIES LINK_FLAGS "-mconsole -Wl,--subsystem,console")
 endif()
-
-target_include_directories(EmuladorNES PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

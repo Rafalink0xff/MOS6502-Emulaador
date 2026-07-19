@@ -5,6 +5,7 @@
 CPU::CPU(Bus* b) {
     bus = b;
     vblank_ativo = false;
+    log_index = 0;
 }
 
 void CPU::Reset() {
@@ -16,11 +17,6 @@ void CPU::Reset() {
 }
 
 void CPU::NMI() {
-    static int contador_frames = 0;
-    contador_frames++;
-    if (contador_frames % 60 == 0) {
-        std::cout << "[Sistema] 60 frames processados! (1 seg. de jogo real)\n";
-    }
     Push((PC >> 8) & 0xFF);
     Push(PC & 0xFF);
     Push(Status | 0x20);
@@ -39,9 +35,6 @@ void CPU::GatilhoVBlank() {
 }
 
 int CPU::ExecutarCiclo() {
-    // uint16_t pc_atual = PC;
-    // std::cout << DisassembleInstrucao(pc_atual) << "\n";
-
     SalvarLogCircular();
 
     uint8_t opcode = LerMemoria(PC);
@@ -155,15 +148,38 @@ int CPU::ExecutarCiclo() {
         case 0x45: Instrucao_EOR(ModoZeroPage()); break;
         case 0x49: Instrucao_EOR(ModoImediato());  break;
         case 0x55: Instrucao_EOR(ModoZeroPageX()); break;
-        case 0x4D: Instrucao_EOR(ModoAbsoluto()); break;  // <--- Faltava
-        case 0x5D: Instrucao_EOR(ModoAbsolutoX()); break; // <--- Faltava
-        case 0x59: Instrucao_EOR(ModoAbsolutoY()); break; // <--- Faltava
-        case 0x41: Instrucao_EOR(ModoIndiretoX()); break; // (Opcional, mas bom ter)
-        case 0x51: Instrucao_EOR(ModoIndiretoY()); break; // <--- Faltava
+        case 0x4D: Instrucao_EOR(ModoAbsoluto()); break;
+        case 0x5D: Instrucao_EOR(ModoAbsolutoX()); break;
+        case 0x59: Instrucao_EOR(ModoAbsolutoY()); break;
+        case 0x41: Instrucao_EOR(ModoIndiretoX()); break;
+        case 0x51: Instrucao_EOR(ModoIndiretoY()); break;
 
         case 0x9A: SP = X; break;
         case 0x78: Status |= 0x04; break;
         case 0xD8: Status &= ~0x08; break;
+
+        case 0xEA: break; // NOP
+        case 0x58: Status &= ~0x04; break; // CLI
+        case 0x08: Instrucao_PHP(); break;
+        case 0x28: Instrucao_PLP(); break;
+        case 0xB8: Status &= ~0x40; break; // CLV
+        case 0xF8: Status |= 0x08;  break; // SED
+        case 0xBA: X = SP; AtualizarFlagsZeroENegativo(X); break; // TSX
+
+        case 0x50: Instrucao_BVC(ModoRelativo()); break;
+        case 0x70: Instrucao_BVS(ModoRelativo()); break;
+
+        case 0xA1: Instrucao_LDA(ModoIndiretoX()); break;
+        case 0x81: Instrucao_STA(ModoIndiretoX()); break;
+        case 0xC1: Instrucao_CMP(ModoIndiretoX()); break;
+        case 0xE1: Instrucao_SBC(ModoIndiretoX()); break;
+        case 0x61: Instrucao_ADC(ModoIndiretoX()); break;
+
+        // --- AS NOVAS INSTRUÇÕES (Físicas de colisão) ---
+        case 0x71: Instrucao_ADC(ModoIndiretoY()); break;
+        case 0xD1: Instrucao_CMP(ModoIndiretoY()); break;
+        case 0xF1: Instrucao_SBC(ModoIndiretoY()); break;
+
         case 0x48: Instrucao_PHA(); break;
         case 0x68: Instrucao_PLA(); break;
         case 0x38: Instrucao_SEC(); break;
@@ -176,19 +192,17 @@ int CPU::ExecutarCiclo() {
         case 0x6C: Instrucao_JMP(ModoIndireto()); break;
 
         case 0x00:
-            std::cout << "Interrupcao forcada (BRK).\n";
-            ImprimirHistoricoCrash(); // <--- CHAMA A CAIXA PRETA AQUI
+            std::cerr << "Interrupcao forcada (BRK).\n";
+            ImprimirHistoricoCrash();
             exit(0);
 
         default:
-            std::cout << "\nERRO FATAL: Instrucao desconhecida lida pela CPU! Opcode: 0x"
+            std::cerr << "\nERRO FATAL: Instrucao desconhecida lida pela CPU! Opcode: 0x"
                       << std::uppercase << std::hex << (int)opcode
                       << " no PC: 0x" << PC-1 << "\n";
+            std::cerr.flush();
 
-            ImprimirHistoricoCrash(); // <--- CHAMA A CAIXA PRETA AQUI!
-
-            std::cout << "Pressione ENTER para sair...\n";
-            std::cin.get();
+            ImprimirHistoricoCrash();
             exit(1);
     }
 
@@ -215,7 +229,6 @@ int CPU::ExecutarCiclo() {
 }
 
 uint8_t CPU::LerMemoria(uint16_t endereco) {
-    // A CPU não intercepta mais NADA. Ela só confia no barramento.
     return bus->Ler(endereco);
 }
 

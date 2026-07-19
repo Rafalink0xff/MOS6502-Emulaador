@@ -1,15 +1,14 @@
 #pragma once
 #include <cstdint>
 #include <string>
-#include <deque>
 #include "bus.h"
 
 class CPU {
 private:
-    Bus* bus; // A CPU só aponta para o Bus agora
+    Bus* bus;
 
 public:
-    CPU(Bus* b); // Construtor atualizado
+    CPU(Bus* b);
 
     // --- REGISTRADORES DO HARDWARE ---
     uint16_t PC;
@@ -19,9 +18,9 @@ public:
     uint8_t  Y;
     uint8_t  Status;
 
-    // --- NOVO: CAIXA PRETA ---
-    // CORREÇÃO: Faltava o <std::string> aqui!
-    std::deque<std::string> historico_log;
+    // --- CAIXA PRETA OTIMIZADA ---
+    std::string historico_log[50];
+    int log_index;
     void SalvarLogCircular();
     void ImprimirHistoricoCrash();
 
@@ -39,7 +38,7 @@ private:
     void Push(uint8_t valor);
     uint8_t Pop();
 
-    // --- BARRAMENTO DE MEMÓRIA (O Pedágio) ---
+    // --- BARRAMENTO DE MEMÓRIA ---
     uint8_t LerMemoria(uint16_t endereco);
     void EscreverMemoria(uint16_t endereco, uint8_t valor);
 
@@ -56,6 +55,10 @@ private:
     uint16_t ModoZeroPageX();
 
     // --- INSTRUÇÕES DA CPU ---
+    void Instrucao_PHP();
+    void Instrucao_PLP();
+    void Instrucao_BVC(uint16_t endereco);
+    void Instrucao_BVS(uint16_t endereco);
     void Instrucao_LDA(uint16_t endereco);
     void Instrucao_LDX(uint16_t endereco);
     void Instrucao_LDY(uint16_t endereco);

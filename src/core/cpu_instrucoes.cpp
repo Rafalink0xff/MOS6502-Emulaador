@@ -449,3 +449,23 @@ void CPU::Instrucao_ASL(uint16_t endereco) {
     EscreverMemoria(endereco, valor);
     AtualizarFlagsZeroENegativo(valor);
 }
+
+void CPU::Instrucao_PHP() {
+    // Salva o painel de status com as flags B (Bit 4) e Unused (Bit 5) acesas
+    Push(Status | 0x30);
+}
+
+void CPU::Instrucao_PLP() {
+    // Restaura o painel de status, ignorando a flag B e forçando o Bit 5 aceso
+    Status = (Pop() & 0xEF) | 0x20;
+}
+
+void CPU::Instrucao_BVC(uint16_t endereco) {
+    // Pula se a flag de Overflow (Bit 6) estiver DESLIGADA
+    if ((Status & 0x40) == 0) PC = endereco;
+}
+
+void CPU::Instrucao_BVS(uint16_t endereco) {
+    // Pula se a flag de Overflow (Bit 6) estiver LIGADA
+    if ((Status & 0x40) != 0) PC = endereco;
+}

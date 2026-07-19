@@ -1,0 +1,2 @@
+CRASH LOG - Ultimas 50 instrucoes
+PC:0000  |  A:00  X:00  Y:00  P:24  SP:FD
