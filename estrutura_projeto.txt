@@ -1,0 +1,60 @@
+Projeto: MOS6502-Emulaador
+================================================================================
+
+📁 build_linux/
+    📁 CMakeFiles/
+        📁 4.2.3/
+            📁 CompilerIdCXX/
+                📁 tmp/
+                📄 a.out
+                📄 CMakeCXXCompilerId.cpp
+            📄 CMakeCXXCompiler.cmake
+            📄 CMakeDetermineCompilerABI_CXX.bin
+            📄 CMakeSystem.cmake
+        📁 CMakeScratch/
+        📁 pkgRedirects/
+        📄 cmake.check_cache
+        📄 CMakeConfigureLog.yaml
+    📄 CMakeCache.txt
+📁 src/
+    📁 core/
+        📄 apu.cpp
+        📄 apu.h
+        📄 bus.cpp
+        📄 bus.h
+        📄 cpu.cpp
+        📄 cpu.h
+        📄 cpu_debug.cpp
+        📄 cpu_instrucoes.cpp
+        📄 cpu_modos.cpp
+        📄 ppu.cpp
+        📄 ppu.h
+    📁 frontend/
+        📄 gui.cpp
+        📄 gui.h
+        📄 main.cpp
+📁 vendor/
+    📁 imgui/
+        📄 imconfig.h
+        📄 imgui.cpp
+        📄 imgui.h
+        📄 imgui_demo.cpp
+        📄 imgui_draw.cpp
+        📄 imgui_impl_sdl2.cpp
+        📄 imgui_impl_sdl2.h
+        📄 imgui_impl_sdlrenderer2.cpp
+        📄 imgui_impl_sdlrenderer2.h
+        📄 imgui_internal.h
+        📄 imgui_tables.cpp
+        📄 imgui_widgets.cpp
+        📄 imstb_rectpack.h
+        📄 imstb_textedit.h
+        📄 imstb_truetype.h
+📄 .gitignore
+📄 CMakeLists.txt
+📄 crash_log.txt
+📄 EmuladorNES.vcxproj
+📄 EmuladorNES.vcxproj.filters
+📄 imgui.ini
+📄 mario.nes
+📄 script.py

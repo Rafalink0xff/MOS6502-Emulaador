@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "ppu.h"
-#include "apu.h" // <-- Incluímos a APU
+#include "apu.h"
 
 class Bus {
 public:
@@ -15,9 +15,10 @@ public:
     uint16_t oam_dma_ciclos;
 
     PPU ppu;
-    APU apu; // <-- Instanciamos a placa de som
+    APU apu;
 
-    uint8_t controle_estado;
+    uint8_t controle_estado; // O que a CPU enxerga (desloca 1 bit por vez)
+    uint8_t estado_botoes;   // O Buffer seguro do teclado (sempre atualizado pelo frontend)
     uint8_t controle_shift;
 
     void Escrever(uint16_t endereco, uint8_t valor);

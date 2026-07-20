@@ -202,6 +202,7 @@ bool PPU::Clock() {
 
         uint8_t cor_bg = CorBackgroundEmPixel(pixel_x, pixel_y);
         uint8_t cor_sprite = 0xFF;
+        bool prioridade_background = false; // <-- NOVO: Armazena a prioridade do sprite atual
 
         for (int i = 63; i >= 0; i--) {
             int base = i * 4;
@@ -214,6 +215,10 @@ bool PPU::Clock() {
                 if (color != 0xFF) {
                     cor_sprite = color;
 
+                    // <-- NOVO: Lê o Bit 5 do atributo do Sprite (0 = Frente, 1 = Atrás do fundo)
+                    uint8_t atributo = oam[base + 2];
+                    prioridade_background = (atributo & 0x20) != 0;
+
                     // A DETECÇÃO PERFEITA DO SPRITE 0
                     if (i == 0 && !bg_transparente && pixel_x < 255) {
                         sprite0_hit = true;
@@ -222,8 +227,15 @@ bool PPU::Clock() {
             }
         }
 
+        // <-- NOVO: A Lógica de renderização misturando a prioridade
         if (cor_sprite != 0xFF) {
-            tela_pixels[pixel_y * 256 + pixel_x] = cor_sprite;
+            // Se o Sprite pediu para ficar atrás E o fundo ali é sólido (não é o céu)
+            if (prioridade_background && !bg_transparente) {
+                tela_pixels[pixel_y * 256 + pixel_x] = cor_bg;
+            } else {
+                // Caso contrário, o Sprite vence e aparece na frente
+                tela_pixels[pixel_y * 256 + pixel_x] = cor_sprite;
+            }
         } else {
             tela_pixels[pixel_y * 256 + pixel_x] = cor_bg;
         }

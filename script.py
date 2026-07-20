@@ -1,7 +1,8 @@
 from pathlib import Path
 
-# Pasta onde o script está (raiz do projeto)
+# Pasta raiz do projeto
 RAIZ = Path(__file__).resolve().parent
+SRC = RAIZ / "src"
 
 # Arquivo de saída
 ARQUIVO_SAIDA = RAIZ / "codigo_projeto1.txt"
@@ -9,28 +10,31 @@ ARQUIVO_SAIDA = RAIZ / "codigo_projeto1.txt"
 # Extensões desejadas
 EXTENSOES = {".cpp", ".h"}
 
-# Nome de arquivos extras que também devem ser incluídos
-ARQUIVOS_EXTRAS = {"CMakeLists.txt"}
+arquivos = []
 
-# Apenas arquivos da pasta raiz (não percorre subpastas)
-arquivos = sorted(
-    arquivo for arquivo in RAIZ.iterdir()
-    if arquivo.is_file()
-    and (
-            arquivo.suffix.lower() in EXTENSOES
-            or arquivo.name in ARQUIVOS_EXTRAS
+# Adiciona o CMakeLists.txt da raiz
+cmake = RAIZ / "CMakeLists.txt"
+if cmake.is_file():
+    arquivos.append(cmake)
+
+# Adiciona todos os .cpp e .h da pasta src
+if SRC.is_dir():
+    arquivos.extend(
+        sorted(
+            arquivo
+            for arquivo in SRC.rglob("*")
+            if arquivo.is_file()
+            and arquivo.suffix.lower() in EXTENSOES
+        )
     )
-)
 
 with ARQUIVO_SAIDA.open("w", encoding="utf-8") as saida:
     if not arquivos:
-        saida.write("Nenhum arquivo .cpp, .h ou CMakeLists.txt encontrado na pasta raiz.\n")
+        saida.write("Nenhum arquivo encontrado.\n")
     else:
         for arquivo in arquivos:
             saida.write("=" * 80 + "\n")
-            saida.write(f"Arquivo: {arquivo.name}\n")
-            saida.write(f"Caminho relativo: {arquivo.relative_to(RAIZ)}\n")
-            saida.write(f"Caminho completo: {arquivo.resolve()}\n")
+            saida.write(f"Arquivo: {arquivo.relative_to(RAIZ)}\n")
             saida.write("=" * 80 + "\n\n")
 
             try:
